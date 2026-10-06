@@ -148,6 +148,9 @@
         const SP_DOCS_BASE_URL = "https://carachosro.sharepoint.com/sites/Agendy/dokumenty_agend";
         // ------------------------------
 
+        // Globální pole pro sledování smazaných souborů z existující agendy
+        let deletedFiles = [];
+
         function fileToBase64(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -263,6 +266,7 @@
 
                 recordedDataList.innerHTML = '';
                 stepsContainer.innerHTML = '';
+                deletedFiles = []; // Reset sledování pro nově načtenou agendu
 
                 if (data.recordedData && data.recordedData.length > 0) {
                     const targetEl = document.getElementById('recordedDataContainer');
@@ -300,6 +304,7 @@
                         card.querySelector('.step-desc-input').value = step.description || '';
                         autoExpand(card.querySelector('.step-desc-input'));
 
+                        // Formulář kroku – existující soubor
                         if (step.formFile) {
                             const fileName = typeof step.formFile === 'object' ? step.formFile.name : step.formFile;
                             const fileUrl = (typeof step.formFile === 'object' && step.formFile.url) 
@@ -321,7 +326,12 @@
                                             <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
                                         </a>
                                     </div>
-                                    <span class="text-[11px] text-blue-500 font-normal shrink-0 ml-2">(uloženo v SharePointu)</span>
+                                    <div class="flex items-center gap-2 shrink-0 ml-2">
+                                        <span class="text-[11px] text-blue-500 font-normal">(SharePoint)</span>
+                                        <button type="button" class="remove-existing-formfile-btn text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors" title="Smazat soubor ze SharePointu">
+                                            <i class="fa-solid fa-trash-can text-xs"></i>
+                                        </button>
+                                    </div>
                                 `;
                                 const inputWrapper = formPanel.querySelector('.flex.items-center.gap-4');
                                 if (inputWrapper && !formPanel.querySelector('.existing-file-preview')) {
@@ -330,6 +340,7 @@
                             }
                         }
 
+                        // Vstupy
                         if (step.inputs && step.inputs.length > 0) {
                             const inputsList = card.querySelector(`#inputs-${step.id} .io-list`);
                             step.inputs.forEach(io => {
@@ -362,14 +373,20 @@
                                         row._existingFiles.push({ name: fName, url: fUrl });
 
                                         const li = document.createElement('li');
-                                        li.className = "flex items-center justify-between bg-blue-50/70 px-2 py-1.5 rounded border border-blue-100 mb-1";
+                                        li.className = "flex items-center justify-between bg-blue-50/70 px-2 py-1.5 rounded border border-blue-100 mb-1 existing-io-file-item";
+                                        li.dataset.fileName = fName;
                                         li.innerHTML = `
                                             <a href="${fUrl}" target="_blank" rel="noopener noreferrer" class="truncate mr-2 text-blue-700 hover:underline flex items-center gap-1.5">
                                                 <i class="fa-solid fa-paperclip text-[10px]"></i>
                                                 <span class="truncate">${fName}</span>
                                                 <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-blue-500"></i>
                                             </a>
-                                            <span class="text-[10px] text-blue-400 shrink-0 ml-2">(SharePoint)</span>
+                                            <div class="flex items-center gap-1 shrink-0 ml-2">
+                                                <span class="text-[10px] text-blue-400">(SharePoint)</span>
+                                                <button type="button" class="remove-existing-iofile-btn text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors" title="Smazat soubor ze SharePointu">
+                                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                                </button>
+                                            </div>
                                         `;
                                         fileListContainer.appendChild(li);
                                     });
@@ -378,6 +395,7 @@
                             });
                         }
 
+                        // Výstupy
                         if (step.outputs && step.outputs.length > 0) {
                             const outputsList = card.querySelector(`#outputs-${step.id} .io-list`);
                             step.outputs.forEach(io => {
@@ -410,14 +428,20 @@
                                         row._existingFiles.push({ name: fName, url: fUrl });
 
                                         const li = document.createElement('li');
-                                        li.className = "flex items-center justify-between bg-emerald-50/70 px-2 py-1.5 rounded border border-emerald-100 mb-1";
+                                        li.className = "flex items-center justify-between bg-emerald-50/70 px-2 py-1.5 rounded border border-emerald-100 mb-1 existing-io-file-item";
+                                        li.dataset.fileName = fName;
                                         li.innerHTML = `
                                             <a href="${fUrl}" target="_blank" rel="noopener noreferrer" class="truncate mr-2 text-emerald-700 hover:underline flex items-center gap-1.5">
                                                 <i class="fa-solid fa-paperclip text-[10px]"></i>
                                                 <span class="truncate">${fName}</span>
                                                 <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-500"></i>
                                             </a>
-                                            <span class="text-[10px] text-emerald-400 shrink-0 ml-2">(SharePoint)</span>
+                                            <div class="flex items-center gap-1 shrink-0 ml-2">
+                                                <span class="text-[10px] text-emerald-400">(SharePoint)</span>
+                                                <button type="button" class="remove-existing-iofile-btn text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors" title="Smazat soubor ze SharePointu">
+                                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                                </button>
+                                            </div>
                                         `;
                                         fileListContainer.appendChild(li);
                                     });
@@ -697,6 +721,7 @@
                             description: document.getElementById('agendaDesc')?.value || ''
                         },
                         files: [],
+                        deletedFiles: Array.from(new Set(deletedFiles)), // Unikátní seznam souborů ke smazání
                         recordedData: [],
                         steps: []
                     };
@@ -808,6 +833,7 @@
 
                     if (response.ok) {
                         showToast("Úspěšně uloženo", "Data agendy i soubory byly úspěšně odeslány do SharePointu.");
+                        deletedFiles = []; // Po úspěšném odeslání vyprázdníme seznam smazaných
                     } else {
                         throw new Error(`Kód: ${response.status}`);
                     }
@@ -985,7 +1011,20 @@
                 }
 
                 const actions = {
-                    '.delete-step-btn': btn => showDeleteModal(() => { btn.closest('.step-card').remove(); updateUI(); }),
+                    '.delete-step-btn': btn => showDeleteModal(() => { 
+                        const card = btn.closest('.step-card');
+                        // Zachytíme smazané soubory z celé karty
+                        const formPanel = card.querySelector('[id^="form-"]');
+                        if (formPanel && formPanel.dataset.existingFileName) {
+                            deletedFiles.push(formPanel.dataset.existingFileName);
+                        }
+                        card.querySelectorAll('.existing-io-file-item').forEach(item => {
+                            if (item.dataset.fileName) deletedFiles.push(item.dataset.fileName);
+                        });
+
+                        card.remove(); 
+                        updateUI(); 
+                    }),
                     '.insert-before-btn': btn => addStep(btn.closest('.step-card')),
                     '.insert-after-btn': btn => addStep(btn.closest('.step-card').nextElementSibling),
                     '.add-io-btn': btn => {
@@ -994,14 +1033,53 @@
                         btn.previousElementSibling.appendChild(div.firstElementChild);
                         checkPanelDataAndUpdateIcon(btn.closest('.step-panel'));
                     },
-                    '.remove-io-btn': btn => { const p = btn.closest('.step-panel'); btn.closest('.io-row').remove(); checkPanelDataAndUpdateIcon(p); },
+                    '.remove-io-btn': btn => { 
+                        const row = btn.closest('.io-row');
+                        const p = btn.closest('.step-panel');
+                        // Pokud řádek obsahoval existující soubory, přidáme je do deletedFiles
+                        if (row._existingFiles) {
+                            row._existingFiles.forEach(f => deletedFiles.push(f.name));
+                        }
+                        row.remove(); 
+                        checkPanelDataAndUpdateIcon(p); 
+                    },
                     '.add-next-step-btn': btn => {
                         const div = document.createElement('div');
                         div.innerHTML = createNextStepRowHTML();
                         btn.previousElementSibling.appendChild(div.firstElementChild);
                         updateAllDropdowns();
                     },
-                    '.remove-next-step': btn => { const p = btn.closest('.step-panel'); btn.closest('.next-step-row').remove(); checkPanelDataAndUpdateIcon(p); }
+                    '.remove-next-step': btn => { const p = btn.closest('.step-panel'); btn.closest('.next-step-row').remove(); checkPanelDataAndUpdateIcon(p); },
+                    
+                    // Smazání existujícího souboru z formuláře kroku
+                    '.remove-existing-formfile-btn': btn => {
+                        const formPanel = btn.closest('[id^="form-"]');
+                        if (formPanel && formPanel.dataset.existingFileName) {
+                            deletedFiles.push(formPanel.dataset.existingFileName);
+                            delete formPanel.dataset.existingFileName;
+                            delete formPanel.dataset.existingFileUrl;
+                        }
+                        const preview = formPanel.querySelector('.existing-file-preview');
+                        if (preview) preview.remove();
+                        checkPanelDataAndUpdateIcon(formPanel);
+                    },
+
+                    // Smazání existujícího souboru ze vstupu/výstupu
+                    '.remove-existing-iofile-btn': btn => {
+                        const li = btn.closest('.existing-io-file-item');
+                        const row = btn.closest('.io-row');
+                        const p = btn.closest('.step-panel');
+                        const fileName = li.dataset.fileName;
+
+                        if (fileName) {
+                            deletedFiles.push(fileName);
+                            if (row._existingFiles) {
+                                row._existingFiles = row._existingFiles.filter(f => f.name !== fileName);
+                            }
+                        }
+                        li.remove();
+                        checkPanelDataAndUpdateIcon(p);
+                    }
                 };
 
                 for (const selector in actions) {
