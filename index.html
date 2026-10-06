@@ -148,9 +148,10 @@
         const SP_DOCS_BASE_URL = "https://carachosro.sharepoint.com/sites/Agendy/dokumenty_agend";
         // ------------------------------
 
-        // Globální pole pro sledování smazaných souborů z existující agendy
+        // Globální pole pro evidenci souborů určených ke smazání ze SharePointu
         let deletedFiles = [];
 
+        // Převod vybraného souboru na Base64 řetězec
         function fileToBase64(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -163,6 +164,7 @@
             });
         }
         
+        // Pomocná funkce pro bezpečné ošetření konců řádků a řídicích znaků v JSONu
         function sanitizeJsonString(str) {
             let result = '';
             let inString = false;
@@ -210,6 +212,7 @@
             const recordedDataList = document.getElementById('recordedDataList');
             const addRecordedDataBtn = document.getElementById('addRecordedDataBtn');
             
+            // --- INICIALIZACE NAČÍTÁNÍ Z URL ---
             const urlParams = new URLSearchParams(window.location.search);
             const recordId = urlParams.get('id');
             
@@ -234,7 +237,9 @@
                         parsedData = JSON.parse(sanitizeJsonString(parsedData));
                     }
                     
-                    populateForm(parsedData, id);
+                    // Podpora pro nový oddělený formát (detail) i původní formát
+                    const actualData = parsedData.detail ? parsedData.detail : parsedData;
+                    populateForm(actualData, id);
                 } catch (err) {
                     console.error("Chyba stahování:", err);
                     showToast("Chyba načítání", "Nepodařilo se stáhnout data ze serveru.", true);
@@ -245,6 +250,7 @@
             }
 
             function populateForm(data, agendaId) {
+                // 1. Základní údaje agendy
                 if (data.agenda) {
                     const nameEl = document.getElementById('agendaName');
                     const descEl = document.getElementById('agendaDesc');
@@ -264,10 +270,12 @@
                     }
                 }
 
+                // 2. Vyčištění kontejnerů
                 recordedDataList.innerHTML = '';
                 stepsContainer.innerHTML = '';
-                deletedFiles = []; // Reset sledování pro nově načtenou agendu
+                deletedFiles = []; // Reset pro nově načtenou agendu
 
+                // 3. Evidované údaje
                 if (data.recordedData && data.recordedData.length > 0) {
                     const targetEl = document.getElementById('recordedDataContainer');
                     const toggleBtn = document.querySelector(`[data-target="recordedDataContainer"]`);
@@ -294,6 +302,7 @@
                     });
                 }
 
+                // 4. Kroky
                 if (data.steps && data.steps.length > 0) {
                     data.steps.forEach(step => {
                         addStep(null, step.id);
@@ -340,7 +349,7 @@
                             }
                         }
 
-                        // Vstupy
+                        // Vstupy kroku
                         if (step.inputs && step.inputs.length > 0) {
                             const inputsList = card.querySelector(`#inputs-${step.id} .io-list`);
                             step.inputs.forEach(io => {
@@ -395,7 +404,7 @@
                             });
                         }
 
-                        // Výstupy
+                        // Výstupy kroku
                         if (step.outputs && step.outputs.length > 0) {
                             const outputsList = card.querySelector(`#outputs-${step.id} .io-list`);
                             step.outputs.forEach(io => {
@@ -453,6 +462,7 @@
 
                     updateUI();
 
+                    // Navazující kroky
                     data.steps.forEach(step => {
                         const card = document.getElementById(step.id);
                         if (!card) return;
@@ -490,6 +500,7 @@
                 }
             }
 
+            // Potvrzovací dialog pro smazání
             const deleteModal = document.getElementById('deleteModal');
             const modalCancelBtn = document.getElementById('modalCancelBtn');
             const modalConfirmBtn = document.getElementById('modalConfirmBtn');
@@ -715,19 +726,18 @@
                 try {
                     const allNewFiles = [];
 
-                    const agendaData = {
+                    // 1. ČISTÝ DETAIL BEZ BASE64 (pro uložení do textového sloupce v SharePointu)
+                    const cleanDetail = {
                         agenda: {
                             name: document.getElementById('agendaName')?.value || '',
                             description: document.getElementById('agendaDesc')?.value || ''
                         },
-                        files: [],
-                        deletedFiles: Array.from(new Set(deletedFiles)), // Unikátní seznam souborů ke smazání
                         recordedData: [],
                         steps: []
                     };
 
                     document.querySelectorAll('.recorded-data-row').forEach(row => {
-                        agendaData.recordedData.push({
+                        cleanDetail.recordedData.push({
                             name: row.querySelector('.r-data-name')?.value || '',
                             columnName: row.querySelector('.r-data-col')?.value || '',
                             dataType: row.querySelector('.r-data-type')?.value || '',
@@ -742,7 +752,7 @@
                         const stepName = card.querySelector('.step-name-input')?.value || '';
                         const stepDesc = card.querySelector('.step-desc-input')?.value || '';
                         
-                        // 1. FORMULÁŘ KROKU
+                        // Formulář kroku
                         const formPanel = card.querySelector(`#form-${stepId}`);
                         const formInput = card.querySelector('.step-form-input');
                         let formFileData = null;
@@ -750,13 +760,15 @@
                         if (formInput && formInput.files.length > 0) {
                             const file = formInput.files[0];
                             const base64 = await fileToBase64(file);
-                            formFileData = {
-                                name: file.name,
-                                contentType: file.type || 'application/octet-stream'
-                            };
+                            
+                            // Do detailu pouze název souboru
+                            formFileData = { name: file.name };
+                            
+                            // Binárka jde do allNewFiles pro nahrání do knihovny
                             allNewFiles.push({
                                 name: file.name,
-                                contentBytes: base64
+                                contentBytes: base64,
+                                contentType: file.type || 'application/octet-stream'
                             });
                         } else if (formPanel && formPanel.dataset.existingFileName) {
                             formFileData = {
@@ -765,7 +777,7 @@
                             };
                         }
 
-                        // 2. VSTUPY A VÝSTUPY
+                        // Vstupy a Výstupy
                         const extractIOAsync = async (typeId) => {
                             const ioData = [];
                             const rows = Array.from(card.querySelectorAll(`#${typeId}-${stepId} .io-row`));
@@ -774,21 +786,24 @@
                                 const filesInput = row.querySelector('.io-file-input');
                                 const filesList = [];
 
+                                // Zachováme stávající soubory
                                 if (row._existingFiles) {
-                                    row._existingFiles.forEach(ef => filesList.push(ef));
+                                    row._existingFiles.forEach(ef => filesList.push({ name: ef.name, url: ef.url }));
                                 }
 
+                                // Zpracujeme nově vybrané soubory
                                 if (filesInput && filesInput.files.length > 0) {
                                     for (const file of Array.from(filesInput.files)) {
                                         const base64 = await fileToBase64(file);
-                                        const fPayload = {
-                                            name: file.name,
-                                            contentType: file.type || 'application/octet-stream'
-                                        };
-                                        filesList.push(fPayload);
+                                        
+                                        // Do detailu pouze čistý název bez Base64!
+                                        filesList.push({ name: file.name });
+
+                                        // Binárka jde samostatně pro nahrání
                                         allNewFiles.push({
                                             name: file.name,
-                                            contentBytes: base64
+                                            contentBytes: base64,
+                                            contentType: file.type || 'application/octet-stream'
                                         });
                                     }
                                 }
@@ -810,7 +825,7 @@
                             if (targetId) nextSteps.push({ targetStepId: targetId, condition });
                         });
 
-                        agendaData.steps.push({
+                        cleanDetail.steps.push({
                             id: stepId,
                             name: stepName,
                             description: stepDesc,
@@ -821,19 +836,22 @@
                         });
                     }
 
-                    agendaData.files = allNewFiles;
-
-                    const dataStr = JSON.stringify(agendaData);
+                    // 2. FINÁLNÍ PAYLOAD: detail jde do seznamu, files a deletedFiles řeší knihovnu
+                    const payload = {
+                        detail: cleanDetail,
+                        files: allNewFiles,
+                        deletedFiles: Array.from(new Set(deletedFiles))
+                    };
 
                     const response = await fetch(POST_LOGIC_APP_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: dataStr
+                        body: JSON.stringify(payload)
                     });
 
                     if (response.ok) {
-                        showToast("Úspěšně uloženo", "Data agendy i soubory byly úspěšně odeslány do SharePointu.");
-                        deletedFiles = []; // Po úspěšném odeslání vyprázdníme seznam smazaných
+                        showToast("Úspěšně uloženo", "Data agendy i soubory byly v pořádku odeslány do SharePointu.");
+                        deletedFiles = []; // Vyčistíme smazané položky po úspěchu
                     } else {
                         throw new Error(`Kód: ${response.status}`);
                     }
@@ -926,7 +944,7 @@
                 }
                 if (e.target.classList.contains('r-data-col')) e.target.dataset.manualEdit = 'true';
 
-                // Validace: odemčení / uzamčení souborů podle vyplnění názvu vstupu/výstupu
+                // Validace: Odemčení / uzamčení souborů podle vyplnění názvu vstupu/výstupu
                 if (e.target.classList.contains('io-name-input')) {
                     const row = e.target.closest('.io-row');
                     const fileWrapper = row.querySelector('.io-file-wrapper');
@@ -1013,7 +1031,7 @@
                 const actions = {
                     '.delete-step-btn': btn => showDeleteModal(() => { 
                         const card = btn.closest('.step-card');
-                        // Zachytíme smazané soubory z celé karty
+                        // Zachytíme existující soubory z mazaného kroku
                         const formPanel = card.querySelector('[id^="form-"]');
                         if (formPanel && formPanel.dataset.existingFileName) {
                             deletedFiles.push(formPanel.dataset.existingFileName);
