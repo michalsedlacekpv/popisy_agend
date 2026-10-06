@@ -109,7 +109,7 @@
                             0 kroků
                         </span>
                     </div>
-                    <!-- Tlačítko Schéma procesu přesunuté přímo sem do hlavičky kroků -->
+                    <!-- Tlačítko Schéma procesu vpravo nahoře -->
                     <button type="button" id="showDiagramBtn" class="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
                         <i class="fa-solid fa-diagram-project text-blue-600"></i>
                         <span>Schéma procesu</span>
@@ -218,7 +218,6 @@
         // Globální pole pro evidenci souborů určených ke smazání ze SharePointu
         let deletedFiles = [];
 
-        // Generování unikátního úložištního názvu s čistým GUIDem před příponou
         function generateServerFileName(originalName) {
             const guid = (typeof crypto !== 'undefined' && crypto.randomUUID) 
                 ? crypto.randomUUID() 
@@ -279,7 +278,6 @@
             return result;
         }
 
-        // Dynamické natahování textarea podle obsahu
         function autoExpand(textarea) {
             if (!textarea) return;
             textarea.style.height = 'auto';
@@ -302,7 +300,6 @@
             const diagramCloseBtnBottom = document.getElementById('diagramCloseBtnBottom');
             const diagramCanvas = document.getElementById('diagramCanvas');
             
-            // Inicializace načítání z URL
             const urlParams = new URLSearchParams(window.location.search);
             let currentRecordId = urlParams.get('id');
             
@@ -356,10 +353,7 @@
                         }
                     }
 
-                    // Výpočet výšky po zobrazení
-                    setTimeout(() => {
-                        autoExpand(descEl);
-                    }, 50);
+                    setTimeout(() => autoExpand(descEl), 50);
                 }
 
                 recordedDataList.innerHTML = '';
@@ -393,7 +387,7 @@
                     });
                 }
 
-                // 3. Kroky
+                // 3. Kroky – 1. PRŮCHOD: Vytvoření karet a základních polí
                 if (data.steps && data.steps.length > 0) {
                     data.steps.forEach(step => {
                         addStep(null, step.id);
@@ -558,15 +552,8 @@
                                 outputsList.appendChild(row);
                             });
                         }
-                    });
 
-                    updateUI();
-
-                    // Navazující kroky
-                    data.steps.forEach(step => {
-                        const card = document.getElementById(step.id);
-                        if (!card) return;
-
+                        // Navazující kroky – vložení prvků s uchováním ID cíle
                         if (step.nextSteps && step.nextSteps.length > 0) {
                             const nextList = card.querySelector(`#next-${step.id} .next-steps-list`);
                             step.nextSteps.forEach(ns => {
@@ -575,25 +562,26 @@
                                 const row = tempDiv.firstElementChild;
                                 
                                 const select = row.querySelector('.next-step-select');
-                                select.innerHTML = card.querySelector('.next-step-select')?.innerHTML || select.innerHTML;
-                                select.value = ns.targetStepId || '';
+                                // Uložíme si cílové ID pro bezpečné naplnění v dalším kroku
+                                select.dataset.pendingVal = ns.targetStepId || '';
                                 
                                 const condInput = row.querySelector('.condition-input');
                                 condInput.value = ns.condition || '';
                                 
-                                if (select.value !== '') {
-                                    const container = row.querySelector('.condition-container');
-                                    container.classList.remove('opacity-50', 'pointer-events-none');
-                                    condInput.classList.remove('bg-gray-100');
-                                    condInput.classList.add('bg-white');
-                                    autoExpand(condInput);
-                                }
-                                
                                 nextList.appendChild(row);
                             });
                         }
-                        
-                        card.querySelectorAll('.step-panel').forEach(panel => checkPanelDataAndUpdateIcon(panel));
+                    });
+
+                    // 4. Aktualizace všech roletek a propojení vybraných hodnot
+                    updateUI();
+
+                    // 5. Aktualizace stavu ikonek a odznáčků
+                    data.steps.forEach(step => {
+                        const card = document.getElementById(step.id);
+                        if (card) {
+                            card.querySelectorAll('.step-panel').forEach(panel => checkPanelDataAndUpdateIcon(panel));
+                        }
                     });
                 } else if (!data.steps || data.steps.length === 0) {
                     addStep();
@@ -1058,7 +1046,6 @@
                             if (targetEl.classList.contains('expanded')) {
                                 e.currentTarget.classList.add('text-blue-700', 'bg-blue-50/50');
                                 e.currentTarget.classList.remove('text-gray-600');
-                                // Po rozbalení ihned přepočítat výšku všech textarea uvnitř
                                 targetEl.querySelectorAll('textarea.auto-expand').forEach(ta => autoExpand(ta));
                             } else {
                                 e.currentTarget.classList.remove('text-blue-700', 'bg-blue-50/50');
@@ -1084,15 +1071,18 @@
                         if (row.querySelector('.io-name-input')?.value.trim() !== '') countToShow++;
                     });
                     if (countToShow > 0) hasData = true;
+                } else if (panelId.startsWith('next-')) {
+                    panelEl.querySelectorAll('.next-step-row').forEach(row => {
+                        const sel = row.querySelector('.next-step-select');
+                        if (sel && sel.value !== '') countToShow++;
+                    });
+                    if (countToShow > 0) hasData = true;
                 } else {
                     panelEl.querySelectorAll('textarea, input[type="text"]:not(.io-name-input)').forEach(input => {
                         if (input.value.trim() !== '' && !input.closest('.condition-container.opacity-50')) hasData = true;
                     });
                     panelEl.querySelectorAll('input[type="file"]:not(.io-file-input)').forEach(input => {
                         if (input.files.length > 0 || panelEl.dataset.existingServerName) hasData = true;
-                    });
-                    panelEl.querySelectorAll('select.next-step-select').forEach(select => {
-                        if (select.value !== '') hasData = true;
                     });
                 }
 
@@ -1301,18 +1291,37 @@
                 const steps = Array.from(stepsContainer.querySelectorAll('.step-card')).map((card, i) => ({
                     id: card.id, name: card.querySelector('.step-name-input').value.trim() || `(Nepojmenovaný krok ${i + 1})`
                 }));
+
                 document.querySelectorAll('.next-step-select').forEach(select => {
-                    const currentVal = select.value;
+                    // Přečteme si buď existující vybranou hodnotu, nebo pendingVal z načítání
+                    const targetVal = select.dataset.pendingVal || select.value;
+                    delete select.dataset.pendingVal;
+                    
                     const parentId = select.closest('.step-card').id;
                     select.innerHTML = '<option value="">-- Vyberte krok --</option>';
+                    
                     steps.forEach(s => {
                         if (s.id !== parentId) {
                             const opt = document.createElement('option');
-                            opt.value = s.id; opt.textContent = s.name;
-                            if (s.id === currentVal) opt.selected = true;
+                            opt.value = s.id;
+                            opt.textContent = s.name;
+                            if (s.id === targetVal) opt.selected = true;
                             select.appendChild(opt);
                         }
                     });
+
+                    // Po nastavení hodnoty odemkneme pole podmínky, pokud je krok vybrán
+                    const row = select.closest('.next-step-row');
+                    if (row) {
+                        const condContainer = row.querySelector('.condition-container');
+                        const condInput = row.querySelector('.condition-input');
+                        if (select.value !== "") {
+                            condContainer?.classList.remove('opacity-50', 'pointer-events-none');
+                            condInput?.classList.remove('bg-gray-100');
+                            condInput?.classList.add('bg-white');
+                            autoExpand(condInput);
+                        }
+                    }
                 });
             }
 
