@@ -147,7 +147,8 @@
         const POST_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/ulozeni-popisu-agendy/Prijmout_HTTP_pozadavek_z_formulare/paths/invoke";
         
         // Endpoint pro NAČÍTÁNÍ existujícího záznamu (podle ID)
-        const GET_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/nacteni-popisu-agendy/Prijmout HTTP_pozadavek/paths/invoke";
+        // Upraveno kódování mezery v URL pro bezpečné použití s fetch()
+        const GET_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/nacteni-popisu-agendy/Prijmout%20HTTP_pozadavek/paths/invoke";
         // ------------------------------
 
         // Pomocná funkce pro bezpečné ošetření surových konců řádků (Enterů) a řídicích znaků v JSONu
@@ -790,12 +791,111 @@
                     const targetPanel = document.getElementById(iconBtn.getAttribute('data-target'));
                     if (targetPanel.classList.contains('hidden')) {
                         targetPanel.classList.remove('hidden');
-                        iconBtn.classList.add('bg-blue-100', 'border-blue-300');Michale, v tomto novém vlákně nevidím předchozí kontext – o jaký kód přesně jde?
+                        iconBtn.classList.add('bg-blue-100', 'border-blue-300');
+                        targetPanel.querySelectorAll('textarea.auto-expand').forEach(ta => autoExpand(ta));
+                    } else {
+                        targetPanel.classList.add('hidden');
+                        iconBtn.classList.remove('bg-blue-100', 'border-blue-300');
+                    }
+                    return; 
+                }
 
-Nahoď mi stručně, o co se jednalo:
-* **Deployment / Bash skript pro Azure Functions** (Node.js v4, SQL a `--build remote`),
-* **AutoHotkey / PowerShell** utilitu,
-* **Power Apps / Power Fx** vzorec,
-* nebo něco úplně jiného?
+                const actions = {
+                    '.delete-step-btn': btn => showDeleteModal(() => { btn.closest('.step-card').remove(); updateUI(); }),
+                    '.insert-before-btn': btn => addStep(btn.closest('.step-card')),
+                    '.insert-after-btn': btn => addStep(btn.closest('.step-card').nextElementSibling),
+                    '.add-io-btn': btn => {
+                        const div = document.createElement('div');
+                        div.innerHTML = createIORowHTML(btn.getAttribute('data-type'));
+                        btn.previousElementSibling.appendChild(div.firstElementChild);
+                        checkPanelDataAndUpdateIcon(btn.closest('.step-panel'));
+                    },
+                    '.remove-io-btn': btn => { const p = btn.closest('.step-panel'); btn.closest('.io-row').remove(); checkPanelDataAndUpdateIcon(p); },
+                    '.add-next-step-btn': btn => {
+                        const div = document.createElement('div');
+                        div.innerHTML = createNextStepRowHTML();
+                        btn.previousElementSibling.appendChild(div.firstElementChild);
+                        updateAllDropdowns();
+                    },
+                    '.remove-next-step': btn => { const p = btn.closest('.step-panel'); btn.closest('.next-step-row').remove(); checkPanelDataAndUpdateIcon(p); }
+                };
 
-Stačí heslovitě a obratem ti sem hodím kompletní funkční kód.
+                for (const selector in actions) {
+                    const btn = e.target.closest(selector);
+                    if (btn) return actions[selector](btn);
+                }
+            });
+
+            function addStep(beforeElement = null, forceId = null) {
+                const stepId = forceId || generateUniqueId();
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = createStepHTML(stepId);
+                const stepEl = tempDiv.firstElementChild;
+                if (beforeElement) stepsContainer.insertBefore(stepEl, beforeElement);
+                else stepsContainer.appendChild(stepEl);
+                updateUI();
+                if (!forceId) setTimeout(() => stepEl.querySelector('.step-name-input').focus(), 100);
+            }
+
+            function updateUI() {
+                const count = stepsContainer.querySelectorAll('.step-card').length;
+                stepCountBadge.textContent = count === 1 ? '1 krok' : (count >= 2 && count <= 4 ? `${count} kroky` : `${count} kroků`);
+                updateAllDropdowns();
+            }
+
+            function updateAllDropdowns() {
+                const steps = Array.from(stepsContainer.querySelectorAll('.step-card')).map((card, i) => ({
+                    id: card.id, name: card.querySelector('.step-name-input').value.trim() || `(Nepojmenovaný krok ${i + 1})`
+                }));
+                document.querySelectorAll('.next-step-select').forEach(select => {
+                    const currentVal = select.value;
+                    const parentId = select.closest('.step-card').id;
+                    select.innerHTML = '<option value="">-- Vyberte krok --</option>';
+                    steps.forEach(s => {
+                        if (s.id !== parentId) {
+                            const opt = document.createElement('option');
+                            opt.value = s.id; opt.textContent = s.name;
+                            if (s.id === currentVal) opt.selected = true;
+                            select.appendChild(opt);
+                        }
+                    });
+                });
+            }
+
+            bindMainToggles();
+            addStepBtn.addEventListener('click', () => addStep());
+
+            const addRecordedDataBtn = document.getElementById('addRecordedDataBtn');
+            const recordedDataList = document.getElementById('recordedDataList');
+
+            function addRecordedData(beforeElement = null) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = createRecordedDataHTML();
+                if (beforeElement) recordedDataList.insertBefore(tempDiv.firstElementChild, beforeElement);
+                else recordedDataList.appendChild(tempDiv.firstElementChild);
+            }
+            if (addRecordedDataBtn) addRecordedDataBtn.addEventListener('click', () => addRecordedData());
+
+            document.addEventListener('click', (e) => {
+                const act = {
+                    '.delete-data-btn': btn => showDeleteModal(() => btn.closest('.recorded-data-row').remove()),
+                    '.insert-data-before-btn': btn => addRecordedData(btn.closest('.recorded-data-row')),
+                    '.insert-data-after-btn': btn => addRecordedData(btn.closest('.recorded-data-row').nextElementSibling),
+                    '.remove-individual-file-btn': btn => {
+                        const input = btn.closest('.io-row').querySelector('.io-file-input');
+                        if (input._dt) {
+                            input._dt.items.remove(parseInt(btn.dataset.index, 10));
+                            input.files = input._dt.files;
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    }
+                };
+                for (const selector in act) {
+                    const btn = e.target.closest(selector);
+                    if (btn) return act[selector](btn);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
