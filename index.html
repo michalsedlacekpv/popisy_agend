@@ -142,13 +142,51 @@
     </div>
 
     <script>
-        // --- API ADRESY ---
-        // Adresa pro ODESÍLÁNÍ nového záznamu
+        // --- KONFIGURACE APIM ADRES ---
+        // Endpoint pro ODESÍLÁNÍ nového záznamu
         const POST_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/ulozeni-popisu-agendy/Prijmout_HTTP_pozadavek_z_formulare/paths/invoke";
         
-        // Adresa pro NAČÍTÁNÍ existujícího záznamu (podle ID)
-        const GET_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/nacteni-popisu-agendy/Prijmout_HTTP_pozadavek/paths/invoke";
-        // ------------------
+        // Endpoint pro NAČÍTÁNÍ existujícího záznamu (podle ID)
+        const GET_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/nacteni-popisu-agendy/Prijmout HTTP_pozadavek/paths/invoke";
+        // ------------------------------
+
+        // Pomocná funkce pro bezpečné ošetření surových konců řádků (Enterů) a řídicích znaků v JSONu
+        function sanitizeJsonString(str) {
+            let result = '';
+            let inString = false;
+            let escaped = false;
+            for (let i = 0; i < str.length; i++) {
+                const char = str[i];
+                if (inString) {
+                    if (escaped) {
+                        result += char;
+                        escaped = false;
+                    } else if (char === '\\') {
+                        result += char;
+                        escaped = true;
+                    } else if (char === '"') {
+                        result += char;
+                        inString = false;
+                    } else if (char === '\n') {
+                        result += '\\n';
+                    } else if (char === '\r') {
+                        result += '\\r';
+                    } else if (char === '\t') {
+                        result += '\\t';
+                    } else if (char.charCodeAt(0) < 32) {
+                        result += '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0');
+                    } else {
+                        result += char;
+                    }
+                } else {
+                    if (char === '"') {
+                        inString = true;
+                    }
+                    result += char;
+                }
+            }
+            return result;
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             const stepsContainer = document.getElementById('stepsContainer');
@@ -157,6 +195,8 @@
             const agendaForm = document.getElementById('agendaForm');
             const toast = document.getElementById('toastNotification');
             const loadingOverlay = document.getElementById('loadingOverlay');
+            const recordedDataList = document.getElementById('recordedDataList');
+            const addRecordedDataBtn = document.getElementById('addRecordedDataBtn');
             
             // --- INICIALIZACE NAČÍTÁNÍ Z URL ---
             const urlParams = new URLSearchParams(window.location.search);
@@ -170,16 +210,20 @@
 
             async function loadRecordData(id) {
                 loadingOverlay.classList.remove('hidden');
+                console.log("--> Načítám data pro ID:", id);
                 try {
                     const response = await fetch(`${GET_LOGIC_APP_URL}/${id}`);
                     if (!response.ok) throw new Error("Chyba při načítání dat ze SharePointu.");
                     
                     const textData = await response.text();
-                    let parsedData = JSON.parse(textData);
                     
-                    // Logic App občas vrátí JSON ještě jednou zabalený do stringu (escapovaný)
+                    // Ošetření surových znaků a parsování
+                    const sanitized = sanitizeJsonString(textData);
+                    let parsedData = JSON.parse(sanitized);
+                    
+                    // Pokud je JSON ještě jednou obalen jako string
                     if (typeof parsedData === 'string') {
-                        parsedData = JSON.parse(parsedData);
+                        parsedData = JSON.parse(sanitizeJsonString(parsedData));
                     }
                     
                     populateForm(parsedData);
@@ -195,17 +239,21 @@
             function populateForm(data) {
                 // 1. Základní údaje agendy
                 if (data.agenda) {
-                    document.getElementById('agendaName').value = data.agenda.name || '';
-                    document.getElementById('agendaDesc').value = data.agenda.description || '';
-                    autoExpand(document.getElementById('agendaName'));
-                    autoExpand(document.getElementById('agendaDesc'));
+                    const nameEl = document.getElementById('agendaName');
+                    const descEl = document.getElementById('agendaDesc');
+                    if (nameEl) nameEl.value = data.agenda.name || '';
+                    if (descEl) descEl.value = data.agenda.description || '';
+                    autoExpand(nameEl);
+                    autoExpand(descEl);
                     
-                    if(data.agenda.description) {
+                    if (data.agenda.description) {
                         const targetEl = document.getElementById('agendaDescContainer');
                         const toggleBtn = document.querySelector(`[data-target="agendaDescContainer"]`);
-                        targetEl.classList.add('expanded');
-                        toggleBtn.classList.add('expanded-toggle', 'text-blue-700', 'bg-blue-50/50');
-                        toggleBtn.classList.remove('text-gray-600');
+                        if (targetEl && toggleBtn) {
+                            targetEl.classList.add('expanded');
+                            toggleBtn.classList.add('expanded-toggle', 'text-blue-700', 'bg-blue-50/50');
+                            toggleBtn.classList.remove('text-gray-600');
+                        }
                     }
                 }
 
@@ -217,12 +265,14 @@
                 if (data.recordedData && data.recordedData.length > 0) {
                     const targetEl = document.getElementById('recordedDataContainer');
                     const toggleBtn = document.querySelector(`[data-target="recordedDataContainer"]`);
-                    targetEl.classList.add('expanded');
-                    toggleBtn.classList.add('expanded-toggle', 'text-blue-700', 'bg-blue-50/50');
-                    toggleBtn.classList.remove('text-gray-600');
+                    if (targetEl && toggleBtn) {
+                        targetEl.classList.add('expanded');
+                        toggleBtn.classList.add('expanded-toggle', 'text-blue-700', 'bg-blue-50/50');
+                        toggleBtn.classList.remove('text-gray-600');
+                    }
 
                     data.recordedData.forEach(rd => {
-                        addRecordedData(); // Vytvoří prázdný řádek na konci
+                        addRecordedData();
                         const rows = recordedDataList.querySelectorAll('.recorded-data-row');
                         const lastRow = rows[rows.length - 1];
                         
@@ -238,11 +288,12 @@
                     });
                 }
 
-                // 4. Kroky - PRVNÍ PRŮCHOD (Vytvoříme základní karty a ID, aby fungovaly selecty navazujících kroků)
-                if (data.steps) {
+                // 4. Kroky – PRVNÍ PRŮCHOD (Karty a ID)
+                if (data.steps && data.steps.length > 0) {
                     data.steps.forEach(step => {
-                        addStep(null, step.id); // Předáváme původní ID
+                        addStep(null, step.id);
                         const card = document.getElementById(step.id);
+                        if (!card) return;
                         
                         card.querySelector('.step-name-input').value = step.name || '';
                         card.querySelector('.step-desc-input').value = step.description || '';
@@ -256,8 +307,6 @@
                                 tempDiv.innerHTML = createIORowHTML('Vstup');
                                 const row = tempDiv.firstElementChild;
                                 row.querySelector('.io-name-input').value = io.name || '';
-                                // Poznámka: Z bezpečnostních důvodů prohlížeč nedovolí JS nastavit hodnotu input[type="file"].
-                                // Názvy dřívějších souborů (io.files) bychom mohli vypsat např. jako text pod pole, ale file input zůstane prázdný.
                                 inputsList.appendChild(row);
                             });
                         }
@@ -275,12 +324,14 @@
                         }
                     });
 
-                    // Aktualizujeme všechny selecty s navazujícími kroky (všechny kroky už jsou v DOMu)
+                    // Aktualizace seznamu kroků pro roletky
                     updateUI();
 
-                    // 5. Kroky - DRUHÝ PRŮCHOD (Naplnění vazeb navazujících kroků)
+                    // 5. Kroky – DRUHÝ PRŮCHOD (Vazby navazujících kroků)
                     data.steps.forEach(step => {
                         const card = document.getElementById(step.id);
+                        if (!card) return;
+
                         if (step.nextSteps && step.nextSteps.length > 0) {
                             const nextList = card.querySelector(`#next-${step.id} .next-steps-list`);
                             step.nextSteps.forEach(ns => {
@@ -289,7 +340,7 @@
                                 const row = tempDiv.firstElementChild;
                                 
                                 const select = row.querySelector('.next-step-select');
-                                select.innerHTML = card.querySelector('.next-step-select')?.innerHTML || select.innerHTML; // Naklonování options z prvního updatu
+                                select.innerHTML = card.querySelector('.next-step-select')?.innerHTML || select.innerHTML;
                                 select.value = ns.targetStepId || '';
                                 
                                 const condInput = row.querySelector('.condition-input');
@@ -307,12 +358,12 @@
                             });
                         }
                         
-                        // Zkontroluje naplněnost panelů a rozsvítí zelené fajfky na ikonách
                         card.querySelectorAll('.step-panel').forEach(panel => checkPanelDataAndUpdateIcon(panel));
                     });
+                } else if (!data.steps || data.steps.length === 0) {
+                    addStep();
                 }
             }
-
 
             // Modal Logic
             const deleteModal = document.getElementById('deleteModal');
@@ -402,7 +453,7 @@
                         <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Krok</label>
                     </div>
                     <div class="pr-32 mb-4 border border-gray-300 rounded-md p-1 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-200 transition-all">
-                        <input type="text" required class="step-name-input w-full px-2 py-1.5 text-base bg-transparent border-none focus:ring-0 outline-none text-gray-800 placeholder-Název kroku">
+                        <input type="text" required class="step-name-input w-full px-2 py-1.5 text-base bg-transparent border-none focus:ring-0 outline-none text-gray-800 placeholder-gray-400" placeholder="Název kroku">
                     </div>
 
                     <div class="flex flex-wrap gap-2 mb-4">
@@ -573,7 +624,7 @@
                     card.querySelectorAll(`#next-${stepId} .next-step-row`).forEach(row => {
                         const targetId = row.querySelector('.next-step-select')?.value || '';
                         const condition = row.querySelector('.condition-input')?.value || '';
-                        if(targetId) nextSteps.push({ targetStepId: targetId, condition });
+                        if (targetId) nextSteps.push({ targetStepId: targetId, condition });
                     });
 
                     agendaData.steps.push({
@@ -622,7 +673,7 @@
                         if (targetEl) {
                             targetEl.classList.toggle('expanded');
                             e.currentTarget.classList.toggle('expanded-toggle');
-                            if(targetEl.classList.contains('expanded')) {
+                            if (targetEl.classList.contains('expanded')) {
                                 e.currentTarget.classList.add('text-blue-700', 'bg-blue-50/50');
                                 e.currentTarget.classList.remove('text-gray-600');
                             } else {
@@ -635,7 +686,7 @@
             }
 
             function checkPanelDataAndUpdateIcon(panelEl) {
-                if(!panelEl) return;
+                if (!panelEl) return;
                 const panelId = panelEl.id;
                 const stepCard = panelEl.closest('.step-card');
                 const iconBtn = stepCard.querySelector(`[data-target="${panelId}"]`);
@@ -675,7 +726,7 @@
             }
 
             function autoExpand(textarea) {
-                if(!textarea) return;
+                if (!textarea) return;
                 textarea.style.height = '42px';
                 textarea.style.height = textarea.scrollHeight + 'px';
             }
@@ -739,111 +790,12 @@
                     const targetPanel = document.getElementById(iconBtn.getAttribute('data-target'));
                     if (targetPanel.classList.contains('hidden')) {
                         targetPanel.classList.remove('hidden');
-                        iconBtn.classList.add('bg-blue-100', 'border-blue-300');
-                        targetPanel.querySelectorAll('textarea.auto-expand').forEach(ta => autoExpand(ta));
-                    } else {
-                        targetPanel.classList.add('hidden');
-                        iconBtn.classList.remove('bg-blue-100', 'border-blue-300');
-                    }
-                    return; 
-                }
+                        iconBtn.classList.add('bg-blue-100', 'border-blue-300');Michale, v tomto novém vlákně nevidím předchozí kontext – o jaký kód přesně jde?
 
-                const actions = {
-                    '.delete-step-btn': btn => showDeleteModal(() => { btn.closest('.step-card').remove(); updateUI(); }),
-                    '.insert-before-btn': btn => addStep(btn.closest('.step-card')),
-                    '.insert-after-btn': btn => addStep(btn.closest('.step-card').nextElementSibling),
-                    '.add-io-btn': btn => {
-                        const div = document.createElement('div');
-                        div.innerHTML = createIORowHTML(btn.getAttribute('data-type'));
-                        btn.previousElementSibling.appendChild(div.firstElementChild);
-                        checkPanelDataAndUpdateIcon(btn.closest('.step-panel'));
-                    },
-                    '.remove-io-btn': btn => { const p = btn.closest('.step-panel'); btn.closest('.io-row').remove(); checkPanelDataAndUpdateIcon(p); },
-                    '.add-next-step-btn': btn => {
-                        const div = document.createElement('div');
-                        div.innerHTML = createNextStepRowHTML();
-                        btn.previousElementSibling.appendChild(div.firstElementChild);
-                        updateAllDropdowns();
-                    },
-                    '.remove-next-step': btn => { const p = btn.closest('.step-panel'); btn.closest('.next-step-row').remove(); checkPanelDataAndUpdateIcon(p); }
-                };
+Nahoď mi stručně, o co se jednalo:
+* **Deployment / Bash skript pro Azure Functions** (Node.js v4, SQL a `--build remote`),
+* **AutoHotkey / PowerShell** utilitu,
+* **Power Apps / Power Fx** vzorec,
+* nebo něco úplně jiného?
 
-                for (const selector in actions) {
-                    const btn = e.target.closest(selector);
-                    if (btn) return actions[selector](btn);
-                }
-            });
-
-            function addStep(beforeElement = null, forceId = null) {
-                const stepId = forceId || generateUniqueId();
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = createStepHTML(stepId);
-                const stepEl = tempDiv.firstElementChild;
-                if (beforeElement) stepsContainer.insertBefore(stepEl, beforeElement);
-                else stepsContainer.appendChild(stepEl);
-                updateUI();
-                if(!forceId) setTimeout(() => stepEl.querySelector('.step-name-input').focus(), 100);
-            }
-
-            function updateUI() {
-                const count = stepsContainer.querySelectorAll('.step-card').length;
-                stepCountBadge.textContent = count === 1 ? '1 krok' : (count >= 2 && count <= 4 ? `${count} kroky` : `${count} kroků`);
-                updateAllDropdowns();
-            }
-
-            function updateAllDropdowns() {
-                const steps = Array.from(stepsContainer.querySelectorAll('.step-card')).map((card, i) => ({
-                    id: card.id, name: card.querySelector('.step-name-input').value.trim() || `(Nepojmenovaný krok ${i + 1})`
-                }));
-                document.querySelectorAll('.next-step-select').forEach(select => {
-                    const currentVal = select.value;
-                    const parentId = select.closest('.step-card').id;
-                    select.innerHTML = '<option value="">-- Vyberte krok --</option>';
-                    steps.forEach(s => {
-                        if (s.id !== parentId) {
-                            const opt = document.createElement('option');
-                            opt.value = s.id; opt.textContent = s.name;
-                            if (s.id === currentVal) opt.selected = true;
-                            select.appendChild(opt);
-                        }
-                    });
-                });
-            }
-
-            bindMainToggles();
-            addStepBtn.addEventListener('click', () => addStep());
-
-            const addRecordedDataBtn = document.getElementById('addRecordedDataBtn');
-            const recordedDataList = document.getElementById('recordedDataList');
-
-            function addRecordedData(beforeElement = null) {
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = createRecordedDataHTML();
-                if (beforeElement) recordedDataList.insertBefore(tempDiv.firstElementChild, beforeElement);
-                else recordedDataList.appendChild(tempDiv.firstElementChild);
-            }
-            if (addRecordedDataBtn) addRecordedDataBtn.addEventListener('click', () => addRecordedData());
-
-            document.addEventListener('click', (e) => {
-                const act = {
-                    '.delete-data-btn': btn => showDeleteModal(() => btn.closest('.recorded-data-row').remove()),
-                    '.insert-data-before-btn': btn => addRecordedData(btn.closest('.recorded-data-row')),
-                    '.insert-data-after-btn': btn => addRecordedData(btn.closest('.recorded-data-row').nextElementSibling),
-                    '.remove-individual-file-btn': btn => {
-                        const input = btn.closest('.io-row').querySelector('.io-file-input');
-                        if (input._dt) {
-                            input._dt.items.remove(parseInt(btn.dataset.index, 10));
-                            input.files = input._dt.files;
-                            input.dispatchEvent(new Event('change', { bubbles: true }));
-                        }
-                    }
-                };
-                for (const selector in act) {
-                    const btn = e.target.closest(selector);
-                    if (btn) return act[selector](btn);
-                }
-            });
-        });
-    </script>
-</body>
-</html>
+Stačí heslovitě a obratem ti sem hodím kompletní funkční kód.
