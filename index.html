@@ -151,7 +151,6 @@
         // Globální pole pro evidenci souborů určených ke smazání ze SharePointu
         let deletedFiles = [];
 
-        // Převod vybraného souboru na Base64 řetězec
         function fileToBase64(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -164,7 +163,6 @@
             });
         }
         
-        // Pomocná funkce pro bezpečné ošetření konců řádků a řídicích znaků v JSONu
         function sanitizeJsonString(str) {
             let result = '';
             let inString = false;
@@ -212,12 +210,12 @@
             const recordedDataList = document.getElementById('recordedDataList');
             const addRecordedDataBtn = document.getElementById('addRecordedDataBtn');
             
-            // --- INICIALIZACE NAČÍTÁNÍ Z URL ---
+            // Inicializace načítání z URL
             const urlParams = new URLSearchParams(window.location.search);
-            const recordId = urlParams.get('id');
+            let currentRecordId = urlParams.get('id');
             
-            if (recordId) {
-                loadRecordData(recordId);
+            if (currentRecordId) {
+                loadRecordData(currentRecordId);
             } else {
                 addStep();
             }
@@ -237,7 +235,7 @@
                         parsedData = JSON.parse(sanitizeJsonString(parsedData));
                     }
                     
-                    // Podpora pro nový oddělený formát (detail) i původní formát
+                    // Podpora pro nový i starší formát uložení
                     const actualData = parsedData.detail ? parsedData.detail : parsedData;
                     populateForm(actualData, id);
                 } catch (err) {
@@ -273,7 +271,7 @@
                 // 2. Vyčištění kontejnerů
                 recordedDataList.innerHTML = '';
                 stepsContainer.innerHTML = '';
-                deletedFiles = []; // Reset pro nově načtenou agendu
+                deletedFiles = [];
 
                 // 3. Evidované údaje
                 if (data.recordedData && data.recordedData.length > 0) {
@@ -349,7 +347,7 @@
                             }
                         }
 
-                        // Vstupy kroku
+                        // Vstupy
                         if (step.inputs && step.inputs.length > 0) {
                             const inputsList = card.querySelector(`#inputs-${step.id} .io-list`);
                             step.inputs.forEach(io => {
@@ -404,7 +402,7 @@
                             });
                         }
 
-                        // Výstupy kroku
+                        // Výstupy
                         if (step.outputs && step.outputs.length > 0) {
                             const outputsList = card.querySelector(`#outputs-${step.id} .io-list`);
                             step.outputs.forEach(io => {
@@ -500,7 +498,6 @@
                 }
             }
 
-            // Potvrzovací dialog pro smazání
             const deleteModal = document.getElementById('deleteModal');
             const modalCancelBtn = document.getElementById('modalCancelBtn');
             const modalConfirmBtn = document.getElementById('modalConfirmBtn');
@@ -726,7 +723,7 @@
                 try {
                     const allNewFiles = [];
 
-                    // 1. ČISTÝ DETAIL BEZ BASE64 (pro uložení do textového sloupce v SharePointu)
+                    // 1. ČISTÝ DETAIL BEZ BASE64 (max několik KB, žádné binárky!)
                     const cleanDetail = {
                         agenda: {
                             name: document.getElementById('agendaName')?.value || '',
@@ -786,12 +783,10 @@
                                 const filesInput = row.querySelector('.io-file-input');
                                 const filesList = [];
 
-                                // Zachováme stávající soubory
                                 if (row._existingFiles) {
                                     row._existingFiles.forEach(ef => filesList.push({ name: ef.name, url: ef.url }));
                                 }
 
-                                // Zpracujeme nově vybrané soubory
                                 if (filesInput && filesInput.files.length > 0) {
                                     for (const file of Array.from(filesInput.files)) {
                                         const base64 = await fileToBase64(file);
@@ -799,7 +794,7 @@
                                         // Do detailu pouze čistý název bez Base64!
                                         filesList.push({ name: file.name });
 
-                                        // Binárka jde samostatně pro nahrání
+                                        // Binárka jde do allNewFiles pro nahrání do SharePointu
                                         allNewFiles.push({
                                             name: file.name,
                                             contentBytes: base64,
@@ -836,8 +831,9 @@
                         });
                     }
 
-                    // 2. FINÁLNÍ PAYLOAD: detail jde do seznamu, files a deletedFiles řeší knihovnu
+                    // 2. FINÁLNÍ PAYLOAD: id určuje CREATE vs UPDATE, files je pro knihovnu
                     const payload = {
+                        id: currentRecordId || null,
                         detail: cleanDetail,
                         files: allNewFiles,
                         deletedFiles: Array.from(new Set(deletedFiles))
@@ -850,8 +846,16 @@
                     });
 
                     if (response.ok) {
+                        const resData = await response.json();
                         showToast("Úspěšně uloženo", "Data agendy i soubory byly v pořádku odeslány do SharePointu.");
-                        deletedFiles = []; // Vyčistíme smazané položky po úspěchu
+                        deletedFiles = []; // Vyčistíme frontu smazaných souborů
+                        
+                        // Pokud to byla nová agenda, nastavíme do URL její nové ID pro případné další ukládání
+                        if (resData.id && !currentRecordId) {
+                            currentRecordId = String(resData.id);
+                            const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?id=${currentRecordId}`;
+                            window.history.replaceState({ path: newUrl }, '', newUrl);
+                        }
                     } else {
                         throw new Error(`Kód: ${response.status}`);
                     }
@@ -1031,7 +1035,6 @@
                 const actions = {
                     '.delete-step-btn': btn => showDeleteModal(() => { 
                         const card = btn.closest('.step-card');
-                        // Zachytíme existující soubory z mazaného kroku
                         const formPanel = card.querySelector('[id^="form-"]');
                         if (formPanel && formPanel.dataset.existingFileName) {
                             deletedFiles.push(formPanel.dataset.existingFileName);
@@ -1054,7 +1057,6 @@
                     '.remove-io-btn': btn => { 
                         const row = btn.closest('.io-row');
                         const p = btn.closest('.step-panel');
-                        // Pokud řádek obsahoval existující soubory, přidáme je do deletedFiles
                         if (row._existingFiles) {
                             row._existingFiles.forEach(f => deletedFiles.push(f.name));
                         }
