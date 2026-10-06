@@ -141,16 +141,31 @@
         </div>
     </div>
 
-    <script>
+<script>
         // --- KONFIGURACE APIM ADRES ---
         // Endpoint pro ODESÍLÁNÍ nového záznamu
         const POST_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/ulozeni-popisu-agendy/Prijmout_HTTP_pozadavek_z_formulare/paths/invoke";
         
         // Endpoint pro NAČÍTÁNÍ existujícího záznamu (podle ID)
-        // Upraveno kódování mezery v URL pro bezpečné použití s fetch()
         const GET_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/nacteni-popisu-agendy/Prijmout_HTTP_pozadavek/paths/invoke";
+        
+        // Základní cesta do knihovny dokumentů v SharePointu
+        const SP_DOCS_BASE_URL = "https://carachosro.sharepoint.com/sites/Agendy/dokumenty_agend";
         // ------------------------------
 
+        // Převede File objekt z inputu na čistý Base64 řetězec bez prefixu
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64String = reader.result.split(',')[1];
+                    resolve(base64String);
+                };
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+        
         // Pomocná funkce pro bezpečné ošetření surových konců řádků (Enterů) a řídicích znaků v JSONu
         function sanitizeJsonString(str) {
             let result = '';
@@ -222,12 +237,11 @@
                     const sanitized = sanitizeJsonString(textData);
                     let parsedData = JSON.parse(sanitized);
                     
-                    // Pokud je JSON ještě jednou obalen jako string
                     if (typeof parsedData === 'string') {
                         parsedData = JSON.parse(sanitizeJsonString(parsedData));
                     }
                     
-                    populateForm(parsedData);
+                    populateForm(parsedData, id);
                 } catch (err) {
                     console.error("Chyba stahování:", err);
                     showToast("Chyba načítání", "Nepodařilo se stáhnout data ze serveru.", true);
@@ -237,7 +251,7 @@
                 }
             }
 
-            function populateForm(data) {
+            function populateForm(data, agendaId) {
                 // 1. Základní údaje agendy
                 if (data.agenda) {
                     const nameEl = document.getElementById('agendaName');
@@ -300,6 +314,37 @@
                         card.querySelector('.step-desc-input').value = step.description || '';
                         autoExpand(card.querySelector('.step-desc-input'));
 
+                        // Formulář kroku – zobrazení existujícího souboru
+                        if (step.formFile) {
+                            const fileName = typeof step.formFile === 'object' ? step.formFile.name : step.formFile;
+                            const fileUrl = (typeof step.formFile === 'object' && step.formFile.url) 
+                                ? step.formFile.url 
+                                : `${SP_DOCS_BASE_URL}/${agendaId}/${encodeURIComponent(fileName)}`;
+                            
+                            const formPanel = card.querySelector(`#form-${step.id}`);
+                            if (formPanel) {
+                                formPanel.dataset.existingFileName = fileName;
+                                formPanel.dataset.existingFileUrl = fileUrl;
+                                
+                                const previewContainer = formPanel.querySelector('.existing-file-preview') || document.createElement('div');
+                                previewContainer.className = 'existing-file-preview flex items-center justify-between p-2 mb-2 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-900';
+                                previewContainer.innerHTML = `
+                                    <div class="flex items-center gap-2 truncate">
+                                        <i class="fa-solid fa-file-lines text-blue-600"></i>
+                                        <a href="${fileUrl}" target="_blank" rel="noopener noreferrer" class="font-medium hover:underline flex items-center gap-1.5 text-blue-700 truncate" title="Otevřít v nové záložce">
+                                            <span>${fileName}</span>
+                                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                                        </a>
+                                    </div>
+                                    <span class="text-[11px] text-blue-500 font-normal shrink-0 ml-2">(uloženo v SharePointu)</span>
+                                `;
+                                const inputWrapper = formPanel.querySelector('.flex.items-center.gap-4');
+                                if (inputWrapper && !formPanel.querySelector('.existing-file-preview')) {
+                                    formPanel.insertBefore(previewContainer, inputWrapper);
+                                }
+                            }
+                        }
+
                         // Vstupy
                         if (step.inputs && step.inputs.length > 0) {
                             const inputsList = card.querySelector(`#inputs-${step.id} .io-list`);
@@ -308,6 +353,31 @@
                                 tempDiv.innerHTML = createIORowHTML('Vstup');
                                 const row = tempDiv.firstElementChild;
                                 row.querySelector('.io-name-input').value = io.name || '';
+                                
+                                // Vykreslení existujících souborů u vstupu
+                                if (io.files && io.files.length > 0) {
+                                    const fileListContainer = row.querySelector('.file-list-container');
+                                    fileListContainer.classList.remove('hidden');
+                                    row._existingFiles = [];
+
+                                    io.files.forEach(f => {
+                                        const fName = typeof f === 'object' ? f.name : f;
+                                        const fUrl = (typeof f === 'object' && f.url) ? f.url : `${SP_DOCS_BASE_URL}/${agendaId}/${encodeURIComponent(fName)}`;
+                                        row._existingFiles.push({ name: fName, url: fUrl });
+
+                                        const li = document.createElement('li');
+                                        li.className = "flex items-center justify-between bg-blue-50/70 px-2 py-1.5 rounded border border-blue-100 mb-1";
+                                        li.innerHTML = `
+                                            <a href="${fUrl}" target="_blank" rel="noopener noreferrer" class="truncate mr-2 text-blue-700 hover:underline flex items-center gap-1.5">
+                                                <i class="fa-solid fa-paperclip text-[10px]"></i>
+                                                <span class="truncate">${fName}</span>
+                                                <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-blue-500"></i>
+                                            </a>
+                                            <span class="text-[10px] text-blue-400 shrink-0 ml-2">(SharePoint)</span>
+                                        `;
+                                        fileListContainer.appendChild(li);
+                                    });
+                                }
                                 inputsList.appendChild(row);
                             });
                         }
@@ -320,6 +390,31 @@
                                 tempDiv.innerHTML = createIORowHTML('Výstup');
                                 const row = tempDiv.firstElementChild;
                                 row.querySelector('.io-name-input').value = io.name || '';
+                                
+                                // Vykreslení existujících souborů u výstupu
+                                if (io.files && io.files.length > 0) {
+                                    const fileListContainer = row.querySelector('.file-list-container');
+                                    fileListContainer.classList.remove('hidden');
+                                    row._existingFiles = [];
+
+                                    io.files.forEach(f => {
+                                        const fName = typeof f === 'object' ? f.name : f;
+                                        const fUrl = (typeof f === 'object' && f.url) ? f.url : `${SP_DOCS_BASE_URL}/${agendaId}/${encodeURIComponent(fName)}`;
+                                        row._existingFiles.push({ name: fName, url: fUrl });
+
+                                        const li = document.createElement('li');
+                                        li.className = "flex items-center justify-between bg-emerald-50/70 px-2 py-1.5 rounded border border-emerald-100 mb-1";
+                                        li.innerHTML = `
+                                            <a href="${fUrl}" target="_blank" rel="noopener noreferrer" class="truncate mr-2 text-emerald-700 hover:underline flex items-center gap-1.5">
+                                                <i class="fa-solid fa-paperclip text-[10px]"></i>
+                                                <span class="truncate">${fName}</span>
+                                                <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-500"></i>
+                                            </a>
+                                            <span class="text-[10px] text-emerald-400 shrink-0 ml-2">(SharePoint)</span>
+                                        `;
+                                        fileListContainer.appendChild(li);
+                                    });
+                                }
                                 outputsList.appendChild(row);
                             });
                         }
@@ -584,81 +679,133 @@
             agendaForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 
-                const agendaData = {
-                    agenda: {
-                        name: document.getElementById('agendaName')?.value || '',
-                        description: document.getElementById('agendaDesc')?.value || ''
-                    },
-                    recordedData: [],
-                    steps: []
-                };
-
-                document.querySelectorAll('.recorded-data-row').forEach(row => {
-                    agendaData.recordedData.push({
-                        name: row.querySelector('.r-data-name')?.value || '',
-                        columnName: row.querySelector('.r-data-col')?.value || '',
-                        dataType: row.querySelector('.r-data-type')?.value || '',
-                        source: row.querySelector('.r-data-source')?.value || '',
-                        description: row.querySelector('.r-data-desc')?.value || ''
-                    });
-                });
-
-                document.querySelectorAll('.step-card').forEach(card => {
-                    const stepId = card.id;
-                    const stepName = card.querySelector('.step-name-input')?.value || '';
-                    const stepDesc = card.querySelector('.step-desc-input')?.value || '';
-                    const formInput = card.querySelector('.step-form-input');
-                    const formFile = (formInput && formInput.files.length > 0) ? formInput.files[0].name : null;
-
-                    const extractIO = (typeId) => {
-                        const ioData = [];
-                        card.querySelectorAll(`#${typeId}-${stepId} .io-row`).forEach(row => {
-                            const name = row.querySelector('.io-name-input')?.value || '';
-                            const filesInput = row.querySelector('.io-file-input');
-                            const fileNames = filesInput ? Array.from(filesInput.files).map(f => f.name) : [];
-                            if (name) ioData.push({ name, files: fileNames });
-                        });
-                        return ioData;
-                    };
-
-                    const nextSteps = [];
-                    card.querySelectorAll(`#next-${stepId} .next-step-row`).forEach(row => {
-                        const targetId = row.querySelector('.next-step-select')?.value || '';
-                        const condition = row.querySelector('.condition-input')?.value || '';
-                        if (targetId) nextSteps.push({ targetStepId: targetId, condition });
-                    });
-
-                    agendaData.steps.push({
-                        id: stepId,
-                        name: stepName,
-                        description: stepDesc,
-                        formFile: formFile,
-                        inputs: extractIO('inputs'),
-                        outputs: extractIO('outputs'),
-                        nextSteps: nextSteps
-                    });
-                });
-
-                const dataStr = JSON.stringify(agendaData, null, 2);
                 const submitBtn = e.target.querySelector('button[type="submit"]');
                 const originalBtnContent = submitBtn.innerHTML;
-                submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Odesílám...';
+                submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Zpracovávám a odesílám...';
                 submitBtn.disabled = true;
 
                 try {
+                    const agendaData = {
+                        agenda: {
+                            name: document.getElementById('agendaName')?.value || '',
+                            description: document.getElementById('agendaDesc')?.value || ''
+                        },
+                        file: null, // Hlavní soubor pro akci Vytvořit_soubor v Logic App
+                        recordedData: [],
+                        steps: []
+                    };
+
+                    document.querySelectorAll('.recorded-data-row').forEach(row => {
+                        agendaData.recordedData.push({
+                            name: row.querySelector('.r-data-name')?.value || '',
+                            columnName: row.querySelector('.r-data-col')?.value || '',
+                            dataType: row.querySelector('.r-data-type')?.value || '',
+                            source: row.querySelector('.r-data-source')?.value || '',
+                            description: row.querySelector('.r-data-desc')?.value || ''
+                        });
+                    });
+
+                    // Procházíme kroky asynchronně pro načtení Base64 souborů
+                    const stepCards = Array.from(document.querySelectorAll('.step-card'));
+                    for (const card of stepCards) {
+                        const stepId = card.id;
+                        const stepName = card.querySelector('.step-name-input')?.value || '';
+                        const stepDesc = card.querySelector('.step-desc-input')?.value || '';
+                        
+                        // Zpracování formuláře kroku
+                        const formPanel = card.querySelector(`#form-${stepId}`);
+                        const formInput = card.querySelector('.step-form-input');
+                        let formFileData = null;
+
+                        if (formInput && formInput.files.length > 0) {
+                            const file = formInput.files[0];
+                            const base64 = await fileToBase64(file);
+                            formFileData = {
+                                name: file.name,
+                                contentBytes: base64,
+                                contentType: file.type || 'application/octet-stream'
+                            };
+                            // Pokud ještě v kořeni není nastaven file, předáme ho pro primární akci Vytvořit_soubor
+                            if (!agendaData.file) {
+                                agendaData.file = formFileData;
+                            }
+                        } else if (formPanel && formPanel.dataset.existingFileName) {
+                            formFileData = {
+                                name: formPanel.dataset.existingFileName,
+                                url: formPanel.dataset.existingFileUrl
+                            };
+                        }
+
+                        // Zpracování Vstupů a Výstupů (včetně Base64 nově nahraných příloh)
+                        const extractIOAsync = async (typeId) => {
+                            const ioData = [];
+                            const rows = Array.from(card.querySelectorAll(`#${typeId}-${stepId} .io-row`));
+                            for (const row of rows) {
+                                const name = row.querySelector('.io-name-input')?.value || '';
+                                const filesInput = row.querySelector('.io-file-input');
+                                const filesList = [];
+
+                                // Zachováme stávající soubory
+                                if (row._existingFiles) {
+                                    row._existingFiles.forEach(ef => filesList.push(ef));
+                                }
+
+                                // Přidáme nově vybrané soubory
+                                if (filesInput && filesInput.files.length > 0) {
+                                    for (const file of Array.from(filesInput.files)) {
+                                        const base64 = await fileToBase64(file);
+                                        const filePayload = {
+                                            name: file.name,
+                                            contentBytes: base64,
+                                            contentType: file.type || 'application/octet-stream'
+                                        };
+                                        filesList.push(filePayload);
+                                        if (!agendaData.file) agendaData.file = filePayload;
+                                    }
+                                }
+
+                                if (name) ioData.push({ name, files: filesList });
+                            }
+                            return ioData;
+                        };
+
+                        const inputsData = await extractIOAsync('inputs');
+                        const outputsData = await extractIOAsync('outputs');
+
+                        const nextSteps = [];
+                        card.querySelectorAll(`#next-${stepId} .next-step-row`).forEach(row => {
+                            const targetId = row.querySelector('.next-step-select')?.value || '';
+                            const condition = row.querySelector('.condition-input')?.value || '';
+                            if (targetId) nextSteps.push({ targetStepId: targetId, condition });
+                        });
+
+                        agendaData.steps.push({
+                            id: stepId,
+                            name: stepName,
+                            description: stepDesc,
+                            formFile: formFileData,
+                            inputs: inputsData,
+                            outputs: outputsData,
+                            nextSteps: nextSteps
+                        });
+                    }
+
+                    const dataStr = JSON.stringify(agendaData);
+
                     const response = await fetch(POST_LOGIC_APP_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: dataStr
                     });
+
                     if (response.ok) {
-                        showToast("Úspěšně uloženo", "Data agendy byla úspěšně odeslána do SharePointu.");
+                        showToast("Úspěšně uloženo", "Data agendy i soubory byly úspěšně odeslány do SharePointu.");
                     } else {
                         throw new Error(`Kód: ${response.status}`);
                     }
                 } catch (error) {
                     console.error("Chyba při odesílání dat:", error);
-                    showToast("Chyba odeslání", "Nepodařilo se spojit se serverem.", true);
+                    showToast("Chyba odeslání", "Nepodařilo se uložit data se soubory.", true);
                 } finally {
                     submitBtn.innerHTML = originalBtnContent;
                     submitBtn.disabled = false;
@@ -706,7 +853,7 @@
                         if (input.value.trim() !== '' && !input.closest('.condition-container.opacity-50')) hasData = true;
                     });
                     panelEl.querySelectorAll('input[type="file"]:not(.io-file-input)').forEach(input => {
-                        if (input.files.length > 0) hasData = true;
+                        if (input.files.length > 0 || panelEl.dataset.existingFileName) hasData = true;
                     });
                     panelEl.querySelectorAll('select.next-step-select').forEach(select => {
                         if (select.value !== '') hasData = true;
@@ -864,8 +1011,6 @@
 
             bindMainToggles();
             addStepBtn.addEventListener('click', () => addStep());
-
-
 
             function addRecordedData(beforeElement = null) {
                 const tempDiv = document.createElement('div');
