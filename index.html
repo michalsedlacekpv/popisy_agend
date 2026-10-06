@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Návrh Agendy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        
+        .expandable-content {
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out, margin 0.3s ease-in-out;
+            max-height: 0; opacity: 0; overflow: hidden; margin-top: 0;
+        }
+        .expandable-content.expanded {
+            max-height: 5000px; opacity: 1; overflow: visible; margin-top: 0.75rem;
+        }
+        .chevron-icon { transition: transform 0.3s ease; }
+        .expanded-toggle .chevron-icon { transform: rotate(180deg); }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .step-panel { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        textarea.auto-expand { overflow: hidden; resize: none; min-height: 42px; }
+
+        /* Modal a Toast animace */
+        @keyframes slideInUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .toast-enter { animation: slideInUp 0.3s ease-out forwards; }
+        @keyframes modalFadeIn { from { opacity: 0; transform: scale(0.95) translateY(-10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .modal-enter .modal-content { animation: modalFadeIn 0.2s ease-out forwards; }
+        
+        /* Loading Overlay */
+        #loadingOverlay {
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body class="text-gray-800 p-4 md:p-8 bg-slate-50 relative min-h-screen">
+
+    <!-- Loading Overlay pro načítání dat -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 hidden flex flex-col items-center justify-center">
+        <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-600 mb-4"></i>
+        <h2 class="text-lg font-bold text-gray-800">Načítám data ze SharePointu...</h2>
+    </div>
+
+    <main class="max-w-4xl mx-auto mt-2">
+        <form id="agendaForm">
+            
+            <!-- KARTA 1: Základní údaje agendy -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+                <div class="space-y-4">
+                    <div>
+                        <textarea id="agendaName" name="agendaName" required rows="1"
+                            class="auto-expand w-full px-0 py-2 text-3xl md:text-4xl font-bold text-gray-900 bg-transparent border-0 focus:ring-0 outline-none transition-colors placeholder-gray-300 resize-none overflow-hidden"
+                            placeholder="Název agendy..."></textarea>
+                    </div>
+
+                    <div class="bg-gray-50/50 rounded-lg p-1 border border-transparent hover:border-gray-100 transition-colors">
+                        <button type="button" class="section-toggle w-full flex items-center justify-between text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors p-2.5 rounded hover:bg-gray-100/80" data-target="agendaDescContainer">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-align-left text-gray-400"></i> Podrobnější popis agendy</span>
+                            <i class="fa-solid fa-chevron-down text-xs text-gray-400 chevron-icon"></i>
+                        </button>
+                        <div id="agendaDescContainer" class="expandable-content px-2 pb-2">
+                            <textarea id="agendaDesc" name="agendaDesc" rows="2"
+                                class="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-sm text-sm auto-expand"
+                                placeholder="Zde můžete uvést detailní popis celé agendy..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-50/50 rounded-lg p-1 mt-2 border border-transparent hover:border-gray-100 transition-colors">
+                        <button type="button" class="section-toggle w-full flex items-center justify-between text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors p-2.5 rounded hover:bg-gray-100/80" data-target="recordedDataContainer">
+                            <span class="flex items-center gap-2"><i class="fa-solid fa-database text-gray-400"></i> Seznam evidovaných údajů</span>
+                            <i class="fa-solid fa-chevron-down text-xs text-gray-400 chevron-icon"></i>
+                        </button>
+                        <div id="recordedDataContainer" class="expandable-content px-2 pb-2">
+                            <div id="recordedDataList" class="space-y-4 mb-3 empty:mb-0 mt-2"></div>
+                            <button type="button" id="addRecordedDataBtn" class="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-2 py-1.5 px-2.5 rounded hover:bg-blue-50 transition-colors mt-2">
+                                <i class="fa-solid fa-plus"></i> Přidat údaj
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KARTA 2: Kroky Agendy -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+                <div class="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
+                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">Kroky Agendy</h2>
+                    <span class="text-sm px-3 py-1 bg-slate-100 rounded-full text-gray-500 font-medium" id="stepCountBadge">0 kroků</span>
+                </div>
+
+                <div id="stepsContainer" class="space-y-6">
+                    <!-- Dynamicky generované kroky -->
+                </div>
+
+                <button type="button" id="addStepBtn" class="mt-8 w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 font-semibold shadow-sm group bg-gray-50/30">
+                    <i class="fa-solid fa-plus text-lg group-hover:scale-110 transition-transform"></i> Přidat nový krok
+                </button>
+            </div>
+
+            <div class="flex justify-end mt-4 mb-10">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl shadow-lg shadow-blue-200 transition-all transform hover:-translate-y-0.5 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Odeslat do SharePointu
+                </button>
+            </div>
+        </form>
+    </main>
+
+    <!-- Toast Notifikace -->
+    <div id="toastNotification" class="fixed bottom-5 right-5 bg-gray-800 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 hidden z-50 transition-colors duration-300">
+        <i class="fa-solid fa-circle-check text-green-400 text-xl toast-icon"></i>
+        <div>
+            <h4 class="font-bold text-sm toast-title">Úspěšně odesláno</h4>
+            <p class="text-xs text-gray-300 toast-msg">Data byla úspěšně uložena.</p>
+        </div>
+    </div>
+
+    <!-- Custom Delete Modal -->
+    <div id="deleteModal" class="fixed inset-0 bg-gray-900/40 backdrop-blur-sm hidden z-50 flex items-center justify-center transition-opacity">
+        <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div class="p-6">
+                <div class="flex items-center gap-3 mb-4 text-red-600">
+                    <div class="bg-red-100 p-2 rounded-full"><i class="fa-solid fa-triangle-exclamation text-xl"></i></div>
+                    <h3 class="text-lg font-bold text-gray-900">Potvrzení smazání</h3>
+                </div>
+                <p class="text-sm text-gray-600 mb-6">Opravdu chcete tuto položku smazat? Tato akce je nevratná.</p>
+                <div class="flex items-center justify-end gap-3">
+                    <button type="button" id="modalCancelBtn" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">Zrušit</button>
+                    <button type="button" id="modalConfirmBtn" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm shadow-red-200">Smazat</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- API ADRESY ---
+        // Adresa pro ODESÍLÁNÍ nového záznamu
+        const POST_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/ulozeni-popisu-agendy/Prijmout_HTTP_pozadavek_z_formulare/paths/invoke";
+        
+        // Adresa pro NAČÍTÁNÍ existujícího záznamu (podle ID)
+        const GET_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/nacteni-popisu-agendy";
+        // ------------------
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const stepsContainer = document.getElementById('stepsContainer');
+            const addStepBtn = document.getElementById('addStepBtn');
+            const stepCountBadge = document.getElementById('stepCountBadge');
+            const agendaForm = document.getElementById('agendaForm');
+            const toast = document.getElementById('toastNotification');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            
+            // --- INICIALIZACE NAČÍTÁNÍ Z URL ---
+            const urlParams = new URLSearchParams(window.location.search);
+            const recordId = urlParams.get('id');
+            
+            if (recordId) {
+                loadRecordData(recordId);
+            } else {
+                addStep(); // Výchozí prázdný krok pro nový záznam
+            }
+
+            async function loadRecordData(id) {
+                loadingOverlay.classList.remove('hidden');
+                try {
+                    const response = await fetch(`${GET_LOGIC_APP_URL}/${id}`);
+                    if (!response.ok) throw new Error("Chyba při načítání dat ze SharePointu.");
+                    
+                    const textData = await response.text();
+                    let parsedData = JSON.parse(textData);
+                    
+                    // Logic App občas vrátí JSON ještě jednou zabalený do stringu (escapovaný)
+                    if (typeof parsedData === 'string') {
+                        parsedData = JSON.parse(parsedData);
+                    }
+                    
+                    populateForm(parsedData);
+                } catch (err) {
+                    console.error("Chyba stahování:", err);
+                    showToast("Chyba načítání", "Nepodařilo se stáhnout data ze serveru.", true);
+                    addStep(); // fallback
+                } finally {
+                    loadingOverlay.classList.add('hidden');
+                }
+            }
+
+            function populateForm(data) {
+                // 1. Základní údaje agendy
+                if (data.agenda) {
+                    document.getElementById('agendaName').value = data.agenda.name || '';
+                    document.getElementById('agendaDesc').value = data.agenda.description || '';
+                    autoExpand(document.getElementById('agendaName'));
+                    autoExpand(document.getElementById('agendaDesc'));
+                    
+                    if(data.agenda.description) {
+                        const targetEl = document.getElementById('agendaDescContainer');
+                        const toggleBtn = document.querySelector(`[data-target="agendaDescContainer"]`);
+                        targetEl.classList.add('expanded');
+                        toggleBtn.classList.add('expanded-toggle', 'text-blue-700', 'bg-blue-50/50');
+                        toggleBtn.classList.remove('text-gray-600');
+                    }
+                }
+
+                // 2. Vyčištění výchozích kontejnerů
+                recordedDataList.innerHTML = '';
+                stepsContainer.innerHTML = '';
+
+                // 3. Evidované údaje
+                if (data.recordedData && data.recordedData.length > 0) {
+                    const targetEl = document.getElementById('recordedDataContainer');
+                    const toggleBtn = document.querySelector(`[data-target="recordedDataContainer"]`);
+                    targetEl.classList.add('expanded');
+                    toggleBtn.classList.add('expanded-toggle', 'text-blue-700', 'bg-blue-50/50');
+                    toggleBtn.classList.remove('text-gray-600');
+
+                    data.recordedData.forEach(rd => {
+                        addRecordedData(); // Vytvoří prázdný řádek na konci
+                        const rows = recordedDataList.querySelectorAll('.recorded-data-row');
+                        const lastRow = rows[rows.length - 1];
+                        
+                        lastRow.querySelector('.r-data-name').value = rd.name || '';
+                        lastRow.querySelector('.r-data-col').value = rd.columnName || '';
+                        if (rd.columnName) lastRow.querySelector('.r-data-col').dataset.manualEdit = 'true';
+                        lastRow.querySelector('.r-data-type').value = rd.dataType || 'Jeden řádek textu';
+                        lastRow.querySelector('.r-data-source').value = rd.source || '';
+                        lastRow.querySelector('.r-data-desc').value = rd.description || '';
+                        
+                        autoExpand(lastRow.querySelector('.r-data-source'));
+                        autoExpand(lastRow.querySelector('.r-data-desc'));
+                    });
+                }
+
+                // 4. Kroky - PRVNÍ PRŮCHOD (Vytvoříme základní karty a ID, aby fungovaly selecty navazujících kroků)
+                if (data.steps) {
+                    data.steps.forEach(step => {
+                        addStep(null, step.id); // Předáváme původní ID
+                        const card = document.getElementById(step.id);
+                        
+                        card.querySelector('.step-name-input').value = step.name || '';
+                        card.querySelector('.step-desc-input').value = step.description || '';
+                        autoExpand(card.querySelector('.step-desc-input'));
+
+                        // Vstupy
+                        if (step.inputs && step.inputs.length > 0) {
+                            const inputsList = card.querySelector(`#inputs-${step.id} .io-list`);
+                            step.inputs.forEach(io => {
+                                const tempDiv = document.createElement('div');
+                                tempDiv.innerHTML = createIORowHTML('Vstup');
+                                const row = tempDiv.firstElementChild;
+                                row.querySelector('.io-name-input').value = io.name || '';
+                                // Poznámka: Z bezpečnostních důvodů prohlížeč nedovolí JS nastavit hodnotu input[type="file"].
+                                // Názvy dřívějších souborů (io.files) bychom mohli vypsat např. jako text pod pole, ale file input zůstane prázdný.
+                                inputsList.appendChild(row);
+                            });
+                        }
+
+                        // Výstupy
+                        if (step.outputs && step.outputs.length > 0) {
+                            const outputsList = card.querySelector(`#outputs-${step.id} .io-list`);
+                            step.outputs.forEach(io => {
+                                const tempDiv = document.createElement('div');
+                                tempDiv.innerHTML = createIORowHTML('Výstup');
+                                const row = tempDiv.firstElementChild;
+                                row.querySelector('.io-name-input').value = io.name || '';
+                                outputsList.appendChild(row);
+                            });
+                        }
+                    });
+
+                    // Aktualizujeme všechny selecty s navazujícími kroky (všechny kroky už jsou v DOMu)
+                    updateUI();
+
+                    // 5. Kroky - DRUHÝ PRŮCHOD (Naplnění vazeb navazujících kroků)
+                    data.steps.forEach(step => {
+                        const card = document.getElementById(step.id);
+                        if (step.nextSteps && step.nextSteps.length > 0) {
+                            const nextList = card.querySelector(`#next-${step.id} .next-steps-list`);
+                            step.nextSteps.forEach(ns => {
+                                const tempDiv = document.createElement('div');
+                                tempDiv.innerHTML = createNextStepRowHTML();
+                                const row = tempDiv.firstElementChild;
+                                
+                                const select = row.querySelector('.next-step-select');
+                                select.innerHTML = card.querySelector('.next-step-select')?.innerHTML || select.innerHTML; // Naklonování options z prvního updatu
+                                select.value = ns.targetStepId || '';
+                                
+                                const condInput = row.querySelector('.condition-input');
+                                condInput.value = ns.condition || '';
+                                
+                                if (select.value !== '') {
+                                    const container = row.querySelector('.condition-container');
+                                    container.classList.remove('opacity-50', 'pointer-events-none');
+                                    condInput.classList.remove('bg-gray-100');
+                                    condInput.classList.add('bg-white');
+                                    autoExpand(condInput);
+                                }
+                                
+                                nextList.appendChild(row);
+                            });
+                        }
+                        
+                        // Zkontroluje naplněnost panelů a rozsvítí zelené fajfky na ikonách
+                        card.querySelectorAll('.step-panel').forEach(panel => checkPanelDataAndUpdateIcon(panel));
+                    });
+                }
+            }
+
+
+            // Modal Logic
+            const deleteModal = document.getElementById('deleteModal');
+            const modalCancelBtn = document.getElementById('modalCancelBtn');
+            const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+            let confirmDeleteCallback = null;
+
+            function showDeleteModal(callback) {
+                confirmDeleteCallback = callback;
+                deleteModal.classList.remove('hidden');
+                deleteModal.classList.add('modal-enter');
+            }
+
+            function closeDeleteModal() {
+                deleteModal.classList.add('hidden');
+                deleteModal.classList.remove('modal-enter');
+                confirmDeleteCallback = null;
+            }
+
+            modalCancelBtn.addEventListener('click', closeDeleteModal);
+            modalConfirmBtn.addEventListener('click', () => {
+                if (confirmDeleteCallback) confirmDeleteCallback();
+                closeDeleteModal();
+            });
+
+            function generateUniqueId() {
+                return 'id_' + Math.random().toString(36).substr(2, 9);
+            }
+
+            function createRecordedDataHTML() {
+                return `
+                <div class="recorded-data-row p-4 bg-white border border-gray-200 rounded-lg relative shadow-sm group mb-4">
+                    <div class="absolute top-4 right-4 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white pl-2 z-10">
+                        <button type="button" class="insert-data-before-btn text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors" title="Vložit údaj před"><i class="fa-solid fa-arrow-up"></i></button>
+                        <button type="button" class="insert-data-after-btn text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors" title="Vložit údaj za"><i class="fa-solid fa-arrow-down"></i></button>
+                        <button type="button" class="delete-data-btn text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors ml-1" title="Smazat údaj"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 pr-24">
+                        <div>
+                            <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Název údaje *</label>
+                            <input type="text" required class="r-data-name w-full px-3 py-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" placeholder="Např. Jméno žadatele">
+                        </div>
+                        <div>
+                            <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Navrhovaný název sloupce v datech</label>
+                            <input type="text" class="r-data-col w-full px-3 py-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" placeholder="Např. jmeno_zadatele">
+                        </div>
+                        <div>
+                            <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Datový typ (SharePoint)</label>
+                            <select class="r-data-type w-full px-3 py-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-white">
+                                <option value="Jeden řádek textu">Jeden řádek textu</option>
+                                <option value="Více řádků textu">Více řádků textu</option>
+                                <option value="Číslo">Číslo</option>
+                                <option value="Ano/Ne">Ano/Ne</option>
+                                <option value="Volba">Volba</option>
+                                <option value="Datum a čas">Datum a čas</option>
+                                <option value="Osoba nebo skupina">Osoba nebo skupina</option>
+                                <option value="Vyhledávání">Vyhledávání</option>
+                                <option value="Hypertextový odkaz nebo obrázek">Hypertextový odkaz nebo obrázek</option>
+                                <option value="Měna">Měna</option>
+                                <option value="Kalkulované">Kalkulované</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Zdroj</label>
+                            <textarea class="r-data-source auto-expand w-full px-3 py-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-white" rows="1" placeholder="Např. Formulář žádosti"></textarea>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Podrobnější popis</label>
+                        <textarea class="r-data-desc auto-expand w-full px-3 py-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-white" rows="1" placeholder="Doplňující informace k údaji..."></textarea>
+                    </div>
+                </div>
+                `;
+            }
+
+            function createStepHTML(stepId) {
+                return `
+                <div class="step-card bg-white border border-gray-200 rounded-xl p-5 relative shadow-sm group" id="${stepId}">
+                    
+                    <div class="absolute top-4 right-4 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white pl-2 z-10">
+                        <button type="button" class="insert-before-btn text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors" title="Vložit krok před"><i class="fa-solid fa-arrow-up"></i></button>
+                        <button type="button" class="insert-after-btn text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors" title="Vložit krok za"><i class="fa-solid fa-arrow-down"></i></button>
+                        <button type="button" class="delete-step-btn text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors ml-1" title="Smazat krok"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+
+                    <div class="mb-1">
+                        <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Krok</label>
+                    </div>
+                    <div class="pr-32 mb-4 border border-gray-300 rounded-md p-1 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-200 transition-all">
+                        <input type="text" required class="step-name-input w-full px-2 py-1.5 text-base bg-transparent border-none focus:ring-0 outline-none text-gray-800 placeholder-Název kroku">
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 mb-4">
+                        <button type="button" class="icon-tab-btn relative px-3 py-2 text-blue-600 bg-blue-50/50 hover:bg-blue-100 rounded-md transition-all flex items-center justify-center border border-blue-100 shadow-sm" data-target="desc-${stepId}" title="Popis kroku">
+                            <i class="fa-solid fa-align-left"></i>
+                            <span class="data-indicator hidden absolute -top-2 -right-2 w-5 h-5 bg-green-500 border-2 border-white rounded-full flex items-center justify-center text-[10px] text-white font-bold shadow-sm"></span>
+                        </button>
+                        
+                        <button type="button" class="icon-tab-btn relative px-3 py-2 text-blue-600 bg-blue-50/50 hover:bg-blue-100 rounded-md transition-all flex items-center justify-center border border-blue-100 shadow-sm" data-target="form-${stepId}" title="Formulář kroku">
+                            <i class="fa-regular fa-file-lines"></i>
+                            <span class="data-indicator hidden absolute -top-2 -right-2 w-5 h-5 bg-green-500 border-2 border-white rounded-full flex items-center justify-center text-[10px] text-white font-bold shadow-sm"></span>
+                        </button>
+                        
+                        <button type="button" class="icon-tab-btn relative px-3 py-2 text-blue-600 bg-blue-50/50 hover:bg-blue-100 rounded-md transition-all flex items-center justify-center border border-blue-100 shadow-sm" data-target="inputs-${stepId}" title="Vstupy kroku">
+                            <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                            <span class="data-indicator hidden absolute -top-2 -right-2 w-5 h-5 bg-green-500 border-2 border-white rounded-full flex items-center justify-center text-[10px] text-white font-bold shadow-sm"></span>
+                        </button>
+                        
+                        <button type="button" class="icon-tab-btn relative px-3 py-2 text-blue-600 bg-blue-50/50 hover:bg-blue-100 rounded-md transition-all flex items-center justify-center border border-blue-100 shadow-sm" data-target="outputs-${stepId}" title="Výstupy kroku">
+                            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                            <span class="data-indicator hidden absolute -top-2 -right-2 w-5 h-5 bg-green-500 border-2 border-white rounded-full flex items-center justify-center text-[10px] text-white font-bold shadow-sm"></span>
+                        </button>
+
+                        <button type="button" class="icon-tab-btn relative px-3 py-2 text-blue-600 bg-blue-50/50 hover:bg-blue-100 rounded-md transition-all flex items-center justify-center border border-blue-100 shadow-sm" data-target="next-${stepId}" title="Navazující kroky">
+                            <i class="fa-solid fa-diagram-project"></i>
+                            <span class="data-indicator hidden absolute -top-2 -right-2 w-5 h-5 bg-green-500 border-2 border-white rounded-full flex items-center justify-center text-[10px] text-white font-bold shadow-sm"></span>
+                        </button>
+                    </div>
+
+                    <div class="panels-container flex flex-col gap-4">
+                        <div id="desc-${stepId}" class="step-panel hidden bg-gray-50/50 p-4 rounded-lg border border-gray-200 shadow-sm">
+                            <label class="block text-sm font-semibold text-gray-700 mb-3">Popis kroku *</label>
+                            <textarea class="step-desc-input data-input auto-expand w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none text-sm bg-white" rows="1" placeholder="Zadejte popis..."></textarea>
+                        </div>
+                        <div id="form-${stepId}" class="step-panel hidden bg-gray-50/50 p-4 rounded-lg border border-gray-200 shadow-sm">
+                            <div class="flex items-center gap-2 mb-3">
+                                <i class="fa-regular fa-file-lines text-gray-500"></i><label class="block text-sm font-semibold text-gray-700">Formulář kroku</label>
+                            </div>
+                            <div class="flex items-center gap-4 bg-white p-2 border border-gray-200 rounded-md">
+                                <input type="file" class="step-form-input data-input block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                            </div>
+                        </div>
+                        <div id="inputs-${stepId}" class="step-panel hidden bg-gray-50/50 p-4 rounded-lg border border-gray-200 shadow-sm">
+                            <div class="flex items-center gap-2 mb-3">
+                                <i class="fa-solid fa-arrow-right-to-bracket text-gray-500"></i><label class="block text-sm font-semibold text-gray-700">Vstupy (dokumenty k zahájení)</label>
+                            </div>
+                            <div class="io-list space-y-3 mb-3 empty:mb-0"></div>
+                            <button type="button" class="add-io-btn text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-2 py-1.5 px-2.5 rounded hover:bg-blue-100 transition-colors bg-blue-50" data-type="Vstup"><i class="fa-solid fa-plus"></i> Přidat vstup</button>
+                        </div>
+                        <div id="outputs-${stepId}" class="step-panel hidden bg-gray-50/50 p-4 rounded-lg border border-gray-200 shadow-sm">
+                            <div class="flex items-center gap-2 mb-3">
+                                <i class="fa-solid fa-arrow-right-from-bracket text-gray-500"></i><label class="block text-sm font-semibold text-gray-700">Výstupy (dokumenty plynoucí z kroku)</label>
+                            </div>
+                            <div class="io-list space-y-3 mb-3 empty:mb-0"></div>
+                            <button type="button" class="add-io-btn text-sm text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-2 py-1.5 px-2.5 rounded hover:bg-emerald-100 transition-colors bg-emerald-50" data-type="Výstup"><i class="fa-solid fa-plus"></i> Přidat výstup</button>
+                        </div>
+                        <div id="next-${stepId}" class="step-panel hidden bg-gray-50/50 p-4 rounded-lg border border-gray-200 shadow-sm">
+                            <div class="flex items-center gap-2 mb-3">
+                                <i class="fa-solid fa-diagram-project text-gray-500"></i><label class="block text-sm font-semibold text-gray-700">Navazující kroky</label>
+                            </div>
+                            <div class="next-steps-list space-y-3 mb-3 empty:mb-0"></div>
+                            <button type="button" class="add-next-step-btn text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-2 py-1.5 px-2.5 rounded hover:bg-blue-100 transition-colors bg-blue-50"><i class="fa-solid fa-plus"></i> Přidat navazující krok</button>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }
+
+            function createIORowHTML(type) {
+                const colorClass = type === 'Vstup' ? 'text-blue-700 bg-blue-50 hover:bg-blue-100' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100';
+                return `
+                <div class="io-row flex flex-col md:flex-row gap-3 p-3 bg-white border border-gray-200 rounded-lg relative pr-10 items-start shadow-sm">
+                    <div class="flex-1 w-full">
+                        <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Název ${type.toLowerCase()}u *</label>
+                        <input type="text" class="data-input io-name-input w-full px-3 py-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-white" placeholder="Např. Žádost">
+                    </div>
+                    <div class="flex-1 w-full">
+                        <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Soubory (volitelné)</label>
+                        <div class="border border-gray-300 rounded-md p-1">
+                            <input type="file" multiple class="data-input io-file-input block w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:${colorClass.split(' ').join(' file:')} cursor-pointer bg-white">
+                        </div>
+                        <ul class="file-list-container text-[11px] text-gray-600 mt-2 space-y-1 hidden"></ul>
+                    </div>
+                    <button type="button" class="remove-io-btn absolute top-3 right-2 text-gray-400 hover:text-red-500 p-2 transition-colors" title="Odebrat"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                `;
+            }
+
+            function createNextStepRowHTML() {
+                return `
+                <div class="next-step-row flex flex-col md:flex-row gap-4 p-3 bg-white border border-gray-200 rounded-lg relative pr-10 items-start shadow-sm">
+                    <div class="flex-1 w-full">
+                        <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Vyberte krok</label>
+                        <select class="data-input next-step-select w-full px-3 py-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-white">
+                            <option value="">-- Vyberte krok --</option>
+                        </select>
+                    </div>
+                    <div class="flex-1 w-full condition-container opacity-50 pointer-events-none transition-all">
+                        <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Podmínka</label>
+                        <textarea class="data-input condition-input auto-expand w-full px-3 py-2 text-[11px] italic leading-tight border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-gray-100" rows="1" placeholder="Např. pokud je schváleno..."></textarea>
+                    </div>
+                    <button type="button" class="remove-next-step absolute top-4 right-2 text-gray-400 hover:text-red-500 p-2 transition-colors" title="Odebrat"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                `;
+            }
+
+            function showToast(title, message, isError = false) {
+                const icon = toast.querySelector('.toast-icon');
+                if (isError) {
+                    toast.classList.replace('bg-gray-800', 'bg-red-600');
+                    icon.className = 'fa-solid fa-triangle-exclamation text-white text-xl toast-icon';
+                } else {
+                    toast.classList.replace('bg-red-600', 'bg-gray-800');
+                    icon.className = 'fa-solid fa-circle-check text-green-400 text-xl toast-icon';
+                }
+                toast.querySelector('.toast-title').textContent = title;
+                toast.querySelector('.toast-msg').textContent = message;
+                toast.classList.remove('hidden');
+                toast.classList.add('toast-enter');
+                setTimeout(() => {
+                    toast.classList.add('hidden');
+                    toast.classList.remove('toast-enter');
+                }, 5000);
+            }
+
+            // --- EXPORT DAT DO LOGIC APP (POST) ---
+            agendaForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const agendaData = {
+                    agenda: {
+                        name: document.getElementById('agendaName')?.value || '',
+                        description: document.getElementById('agendaDesc')?.value || ''
+                    },
+                    recordedData: [],
+                    steps: []
+                };
+
+                document.querySelectorAll('.recorded-data-row').forEach(row => {
+                    agendaData.recordedData.push({
+                        name: row.querySelector('.r-data-name')?.value || '',
+                        columnName: row.querySelector('.r-data-col')?.value || '',
+                        dataType: row.querySelector('.r-data-type')?.value || '',
+                        source: row.querySelector('.r-data-source')?.value || '',
+                        description: row.querySelector('.r-data-desc')?.value || ''
+                    });
+                });
+
+                document.querySelectorAll('.step-card').forEach(card => {
+                    const stepId = card.id;
+                    const stepName = card.querySelector('.step-name-input')?.value || '';
+                    const stepDesc = card.querySelector('.step-desc-input')?.value || '';
+                    const formInput = card.querySelector('.step-form-input');
+                    const formFile = (formInput && formInput.files.length > 0) ? formInput.files[0].name : null;
+
+                    const extractIO = (typeId) => {
+                        const ioData = [];
+                        card.querySelectorAll(`#${typeId}-${stepId} .io-row`).forEach(row => {
+                            const name = row.querySelector('.io-name-input')?.value || '';
+                            const filesInput = row.querySelector('.io-file-input');
+                            const fileNames = filesInput ? Array.from(filesInput.files).map(f => f.name) : [];
+                            if (name) ioData.push({ name, files: fileNames });
+                        });
+                        return ioData;
+                    };
+
+                    const nextSteps = [];
+                    card.querySelectorAll(`#next-${stepId} .next-step-row`).forEach(row => {
+                        const targetId = row.querySelector('.next-step-select')?.value || '';
+                        const condition = row.querySelector('.condition-input')?.value || '';
+                        if(targetId) nextSteps.push({ targetStepId: targetId, condition });
+                    });
+
+                    agendaData.steps.push({
+                        id: stepId,
+                        name: stepName,
+                        description: stepDesc,
+                        formFile: formFile,
+                        inputs: extractIO('inputs'),
+                        outputs: extractIO('outputs'),
+                        nextSteps: nextSteps
+                    });
+                });
+
+                const dataStr = JSON.stringify(agendaData, null, 2);
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                const originalBtnContent = submitBtn.innerHTML;
+                submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Odesílám...';
+                submitBtn.disabled = true;
+
+                try {
+                    const response = await fetch(POST_LOGIC_APP_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: dataStr
+                    });
+                    if (response.ok) {
+                        showToast("Úspěšně uloženo", "Data agendy byla úspěšně odeslána do SharePointu.");
+                    } else {
+                        throw new Error(`Kód: ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error("Chyba při odesílání dat:", error);
+                    showToast("Chyba odeslání", "Nepodařilo se spojit se serverem.", true);
+                } finally {
+                    submitBtn.innerHTML = originalBtnContent;
+                    submitBtn.disabled = false;
+                }
+            });
+
+            function bindMainToggles() {
+                const toggleBtns = document.querySelectorAll('.section-toggle');
+                toggleBtns.forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const targetId = e.currentTarget.getAttribute('data-target');
+                        const targetEl = document.getElementById(targetId);
+                        if (targetEl) {
+                            targetEl.classList.toggle('expanded');
+                            e.currentTarget.classList.toggle('expanded-toggle');
+                            if(targetEl.classList.contains('expanded')) {
+                                e.currentTarget.classList.add('text-blue-700', 'bg-blue-50/50');
+                                e.currentTarget.classList.remove('text-gray-600');
+                            } else {
+                                e.currentTarget.classList.remove('text-blue-700', 'bg-blue-50/50');
+                                e.currentTarget.classList.add('text-gray-600');
+                            }
+                        }
+                    });
+                });
+            }
+
+            function checkPanelDataAndUpdateIcon(panelEl) {
+                if(!panelEl) return;
+                const panelId = panelEl.id;
+                const stepCard = panelEl.closest('.step-card');
+                const iconBtn = stepCard.querySelector(`[data-target="${panelId}"]`);
+                if (!iconBtn) return;
+
+                let hasData = false;
+                let countToShow = 0;
+
+                if (panelId.startsWith('inputs-') || panelId.startsWith('outputs-')) {
+                    panelEl.querySelectorAll('.io-row').forEach(row => {
+                        if (row.querySelector('.io-name-input')?.value.trim() !== '') countToShow++;
+                    });
+                    if (countToShow > 0) hasData = true;
+                } else {
+                    panelEl.querySelectorAll('textarea, input[type="text"]:not(.io-name-input)').forEach(input => {
+                        if (input.value.trim() !== '' && !input.closest('.condition-container.opacity-50')) hasData = true;
+                    });
+                    panelEl.querySelectorAll('input[type="file"]:not(.io-file-input)').forEach(input => {
+                        if (input.files.length > 0) hasData = true;
+                    });
+                    panelEl.querySelectorAll('select.next-step-select').forEach(select => {
+                        if (select.value !== '') hasData = true;
+                    });
+                }
+
+                const indicator = iconBtn.querySelector('.data-indicator');
+                if (hasData) {
+                    indicator.classList.remove('hidden');
+                    iconBtn.classList.add('ring-2', 'ring-blue-300');
+                    if (countToShow > 0) indicator.textContent = countToShow;
+                    else indicator.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i>';
+                } else {
+                    indicator.classList.add('hidden');
+                    iconBtn.classList.remove('ring-2', 'ring-blue-300');
+                    indicator.textContent = '';
+                }
+            }
+
+            function autoExpand(textarea) {
+                if(!textarea) return;
+                textarea.style.height = '42px';
+                textarea.style.height = textarea.scrollHeight + 'px';
+            }
+
+            document.addEventListener('input', (e) => {
+                if (e.target.classList.contains('auto-expand')) autoExpand(e.target);
+                if (e.target.classList.contains('data-input')) checkPanelDataAndUpdateIcon(e.target.closest('.step-panel'));
+                if (e.target.classList.contains('step-name-input')) updateAllDropdowns();
+                if (e.target.classList.contains('r-data-name')) {
+                    const row = e.target.closest('.recorded-data-row');
+                    const colInput = row.querySelector('.r-data-col');
+                    if (colInput && !colInput.dataset.manualEdit) {
+                        colInput.value = e.target.value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "_").toLowerCase().replace(/[^a-z0-9_]/g, "");           
+                    }
+                }
+                if (e.target.classList.contains('r-data-col')) e.target.dataset.manualEdit = 'true';
+            });
+
+            document.addEventListener('change', (e) => {
+                if (e.target.type === 'file' && e.target.classList.contains('io-file-input')) {
+                    const fileListContainer = e.target.closest('.flex-1').querySelector('.file-list-container');
+                    fileListContainer.innerHTML = '';
+                    if (!e.target._dt) e.target._dt = new DataTransfer();
+                    if (e.isTrusted) Array.from(e.target.files).forEach(file => e.target._dt.items.add(file));
+                    e.target.files = e.target._dt.files;
+                    if (e.target.files.length > 0) {
+                        fileListContainer.classList.remove('hidden');
+                        Array.from(e.target.files).forEach((file, index) => {
+                            const li = document.createElement('li');
+                            li.className = "flex items-center justify-between bg-gray-50 px-2 py-1.5 rounded border border-gray-100 mb-1";
+                            li.innerHTML = `<span class="truncate mr-2">${file.name}</span><button type="button" class="text-gray-400 hover:text-red-500 p-0.5 remove-individual-file-btn" data-index="${index}"><i class="fa-solid fa-times"></i></button>`;
+                            fileListContainer.appendChild(li);
+                        });
+                    } else {
+                        fileListContainer.classList.add('hidden');
+                    }
+                }
+                if (e.target.classList.contains('data-input')) checkPanelDataAndUpdateIcon(e.target.closest('.step-panel'));
+                if (e.target.classList.contains('next-step-select')) {
+                    const row = e.target.closest('.next-step-row');
+                    const condContainer = row.querySelector('.condition-container');
+                    const condInput = row.querySelector('.condition-input');
+                    if (e.target.value !== "") {
+                        condContainer.classList.remove('opacity-50', 'pointer-events-none');
+                        condInput.classList.remove('bg-gray-100');
+                        condInput.classList.add('bg-white');
+                    } else {
+                        condContainer.classList.add('opacity-50', 'pointer-events-none');
+                        condInput.classList.add('bg-gray-100');
+                        condInput.classList.remove('bg-white');
+                        condInput.value = "";
+                        autoExpand(condInput);
+                    }
+                    checkPanelDataAndUpdateIcon(e.target.closest('.step-panel'));
+                }
+            });
+
+            stepsContainer.addEventListener('click', (e) => {
+                const iconBtn = e.target.closest('.icon-tab-btn');
+                if (iconBtn) {
+                    const targetPanel = document.getElementById(iconBtn.getAttribute('data-target'));
+                    if (targetPanel.classList.contains('hidden')) {
+                        targetPanel.classList.remove('hidden');
+                        iconBtn.classList.add('bg-blue-100', 'border-blue-300');
+                        targetPanel.querySelectorAll('textarea.auto-expand').forEach(ta => autoExpand(ta));
+                    } else {
+                        targetPanel.classList.add('hidden');
+                        iconBtn.classList.remove('bg-blue-100', 'border-blue-300');
+                    }
+                    return; 
+                }
+
+                const actions = {
+                    '.delete-step-btn': btn => showDeleteModal(() => { btn.closest('.step-card').remove(); updateUI(); }),
+                    '.insert-before-btn': btn => addStep(btn.closest('.step-card')),
+                    '.insert-after-btn': btn => addStep(btn.closest('.step-card').nextElementSibling),
+                    '.add-io-btn': btn => {
+                        const div = document.createElement('div');
+                        div.innerHTML = createIORowHTML(btn.getAttribute('data-type'));
+                        btn.previousElementSibling.appendChild(div.firstElementChild);
+                        checkPanelDataAndUpdateIcon(btn.closest('.step-panel'));
+                    },
+                    '.remove-io-btn': btn => { const p = btn.closest('.step-panel'); btn.closest('.io-row').remove(); checkPanelDataAndUpdateIcon(p); },
+                    '.add-next-step-btn': btn => {
+                        const div = document.createElement('div');
+                        div.innerHTML = createNextStepRowHTML();
+                        btn.previousElementSibling.appendChild(div.firstElementChild);
+                        updateAllDropdowns();
+                    },
+                    '.remove-next-step': btn => { const p = btn.closest('.step-panel'); btn.closest('.next-step-row').remove(); checkPanelDataAndUpdateIcon(p); }
+                };
+
+                for (const selector in actions) {
+                    const btn = e.target.closest(selector);
+                    if (btn) return actions[selector](btn);
+                }
+            });
+
+            function addStep(beforeElement = null, forceId = null) {
+                const stepId = forceId || generateUniqueId();
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = createStepHTML(stepId);
+                const stepEl = tempDiv.firstElementChild;
+                if (beforeElement) stepsContainer.insertBefore(stepEl, beforeElement);
+                else stepsContainer.appendChild(stepEl);
+                updateUI();
+                if(!forceId) setTimeout(() => stepEl.querySelector('.step-name-input').focus(), 100);
+            }
+
+            function updateUI() {
+                const count = stepsContainer.querySelectorAll('.step-card').length;
+                stepCountBadge.textContent = count === 1 ? '1 krok' : (count >= 2 && count <= 4 ? `${count} kroky` : `${count} kroků`);
+                updateAllDropdowns();
+            }
+
+            function updateAllDropdowns() {
+                const steps = Array.from(stepsContainer.querySelectorAll('.step-card')).map((card, i) => ({
+                    id: card.id, name: card.querySelector('.step-name-input').value.trim() || `(Nepojmenovaný krok ${i + 1})`
+                }));
+                document.querySelectorAll('.next-step-select').forEach(select => {
+                    const currentVal = select.value;
+                    const parentId = select.closest('.step-card').id;
+                    select.innerHTML = '<option value="">-- Vyberte krok --</option>';
+                    steps.forEach(s => {
+                        if (s.id !== parentId) {
+                            const opt = document.createElement('option');
+                            opt.value = s.id; opt.textContent = s.name;
+                            if (s.id === currentVal) opt.selected = true;
+                            select.appendChild(opt);
+                        }
+                    });
+                });
+            }
+
+            bindMainToggles();
+            addStepBtn.addEventListener('click', () => addStep());
+
+            const addRecordedDataBtn = document.getElementById('addRecordedDataBtn');
+            const recordedDataList = document.getElementById('recordedDataList');
+
+            function addRecordedData(beforeElement = null) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = createRecordedDataHTML();
+                if (beforeElement) recordedDataList.insertBefore(tempDiv.firstElementChild, beforeElement);
+                else recordedDataList.appendChild(tempDiv.firstElementChild);
+            }
+            if (addRecordedDataBtn) addRecordedDataBtn.addEventListener('click', () => addRecordedData());
+
+            document.addEventListener('click', (e) => {
+                const act = {
+                    '.delete-data-btn': btn => showDeleteModal(() => btn.closest('.recorded-data-row').remove()),
+                    '.insert-data-before-btn': btn => addRecordedData(btn.closest('.recorded-data-row')),
+                    '.insert-data-after-btn': btn => addRecordedData(btn.closest('.recorded-data-row').nextElementSibling),
+                    '.remove-individual-file-btn': btn => {
+                        const input = btn.closest('.io-row').querySelector('.io-file-input');
+                        if (input._dt) {
+                            input._dt.items.remove(parseInt(btn.dataset.index, 10));
+                            input.files = input._dt.files;
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    }
+                };
+                for (const selector in act) {
+                    const btn = e.target.closest(selector);
+                    if (btn) return act[selector](btn);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
