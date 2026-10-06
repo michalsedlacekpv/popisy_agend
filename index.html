@@ -3,152 +3,235 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Návrh Agendy</title>
+    <title>Správa a popis agendy</title>
+
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- FontAwesome Ikony -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Mermaid.js pro procesní diagramy -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        
-        .expandable-content {
-            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out, margin 0.3s ease-in-out;
-            max-height: 0; opacity: 0; overflow: hidden; margin-top: 0;
+        .auto-expand {
+            resize: none;
+            overflow-y: hidden;
+            min-height: 42px;
         }
-        .expandable-content.expanded {
-            max-height: 5000px; opacity: 1; overflow: visible; margin-top: 0.75rem;
+        .collapsible-container {
+            display: none;
         }
-        .chevron-icon { transition: transform 0.3s ease; }
-        .expanded-toggle .chevron-icon { transform: rotate(180deg); }
-
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-        .step-panel { animation: fadeIn 0.2s ease-out; }
+        .collapsible-container.expanded {
+            display: block;
+        }
+        .toast-enter {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .modal-enter {
+            animation: fadeIn 0.2s ease-out forwards;
+        }
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-4px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        textarea.auto-expand { overflow: hidden; resize: none; min-height: 42px; }
-
-        /* Modal a Toast animace */
-        @keyframes slideInUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .toast-enter { animation: slideInUp 0.3s ease-out forwards; }
-        @keyframes modalFadeIn { from { opacity: 0; transform: scale(0.95) translateY(-10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-        .modal-enter .modal-content { animation: modalFadeIn 0.2s ease-out forwards; }
-        
-        /* Loading Overlay */
-        #loadingOverlay {
-            transition: opacity 0.3s ease;
+            from { opacity: 0; transform: scale(0.96); }
+            to { opacity: 1; transform: scale(1); }
         }
     </style>
 </head>
-<body class="text-gray-800 p-4 md:p-8 bg-slate-50 relative min-h-screen">
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen pb-24">
 
-    <!-- Loading Overlay pro načítání dat -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 hidden flex flex-col items-center justify-center">
-        <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-600 mb-4"></i>
-        <h2 class="text-lg font-bold text-gray-800">Načítám data ze SharePointu...</h2>
-    </div>
+    <!-- Horní navigační lišta -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
+                    A
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-slate-800 leading-tight">Popis procesní agendy</h1>
+                    <p class="text-xs text-slate-500">Integrace se SharePointem a procesním modelem</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" id="showDiagramBtn" class="px-3.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors flex items-center gap-2 shadow-sm">
+                    <i class="fa-solid fa-diagram-project text-blue-600"></i>
+                    <span>Schéma procesu</span>
+                </button>
+            </div>
+        </div>
+    </header>
 
-    <main class="max-w-4xl mx-auto mt-2">
-        <form id="agendaForm">
-            
+    <!-- Hlavní obsah formuláře -->
+    <main class="max-w-5xl mx-auto px-4 mt-6">
+        <form id="agendaForm" class="space-y-6">
+
             <!-- KARTA 1: Základní údaje agendy -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                        <i class="fa-solid fa-folder-open text-blue-600"></i> Základní informace o agendě
+                    </h2>
+                    <button type="button" class="section-toggle text-xs font-semibold text-gray-600 hover:text-blue-700 px-2.5 py-1 rounded-md hover:bg-slate-100 transition-colors flex items-center gap-1.5" data-target="agendaDescContainer">
+                        <i class="fa-solid fa-align-left"></i>
+                        <span>Popis agendy</span>
+                    </button>
+                </div>
+
                 <div class="space-y-4">
                     <div>
-                        <textarea id="agendaName" name="agendaName" required rows="1"
-                            class="auto-expand w-full px-0 py-2 text-3xl md:text-4xl font-bold text-gray-900 bg-transparent border-0 focus:ring-0 outline-none transition-colors placeholder-gray-300 resize-none overflow-hidden"
-                            placeholder="Název agendy..."></textarea>
+                        <label class="text-[11px] uppercase font-bold text-slate-500 mb-1.5 block">Název agendy *</label>
+                        <input type="text" id="agendaName" required class="w-full px-3.5 py-2.5 text-base border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all font-medium" placeholder="Zadejte název agendy...">
                     </div>
 
-                    <div class="bg-gray-50/50 rounded-lg p-1 border border-transparent hover:border-gray-100 transition-colors">
-                        <button type="button" class="section-toggle w-full flex items-center justify-between text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors p-2.5 rounded hover:bg-gray-100/80" data-target="agendaDescContainer">
-                            <span class="flex items-center gap-2"><i class="fa-solid fa-align-left text-gray-400"></i> Podrobnější popis agendy</span>
-                            <i class="fa-solid fa-chevron-down text-xs text-gray-400 chevron-icon"></i>
-                        </button>
-                        <div id="agendaDescContainer" class="expandable-content px-2 pb-2">
-                            <textarea id="agendaDesc" name="agendaDesc" rows="2"
-                                class="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-sm text-sm auto-expand"
-                                placeholder="Zde můžete uvést detailní popis celé agendy..."></textarea>
-                        </div>
-                    </div>
-
-                    <div class="bg-gray-50/50 rounded-lg p-1 mt-2 border border-transparent hover:border-gray-100 transition-colors">
-                        <button type="button" class="section-toggle w-full flex items-center justify-between text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors p-2.5 rounded hover:bg-gray-100/80" data-target="recordedDataContainer">
-                            <span class="flex items-center gap-2"><i class="fa-solid fa-database text-gray-400"></i> Seznam evidovaných údajů</span>
-                            <i class="fa-solid fa-chevron-down text-xs text-gray-400 chevron-icon"></i>
-                        </button>
-                        <div id="recordedDataContainer" class="expandable-content px-2 pb-2">
-                            <div id="recordedDataList" class="space-y-4 mb-3 empty:mb-0 mt-2"></div>
-                            <button type="button" id="addRecordedDataBtn" class="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-2 py-1.5 px-2.5 rounded hover:bg-blue-50 transition-colors mt-2">
-                                <i class="fa-solid fa-plus"></i> Přidat údaj
-                            </button>
-                        </div>
+                    <div id="agendaDescContainer" class="collapsible-container border-t border-slate-100 pt-4 mt-2">
+                        <label class="text-[11px] uppercase font-bold text-slate-500 mb-1.5 block">Podrobný popis agendy</label>
+                        <textarea id="agendaDesc" class="auto-expand w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all" rows="2" placeholder="Doplňující kontext a cíl agendy..."></textarea>
                     </div>
                 </div>
             </div>
 
-            <!-- KARTA 2: Kroky Agendy -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-                <div class="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
-                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">Kroky Agendy</h2>
-                    <span class="text-sm px-3 py-1 bg-slate-100 rounded-full text-gray-500 font-medium" id="stepCountBadge">0 kroků</span>
+            <!-- KARTA 2: Evidované údaje -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                            <i class="fa-solid fa-database text-blue-600"></i> Evidované údaje
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Seznam datových polí evidovaných v rámci agendy</p>
+                    </div>
+                    <button type="button" class="section-toggle text-xs font-semibold text-gray-600 hover:text-blue-700 px-2.5 py-1 rounded-md hover:bg-slate-100 transition-colors flex items-center gap-1.5" data-target="recordedDataContainer">
+                        <i class="fa-solid fa-table-list"></i>
+                        <span>Zobrazit / skrýt</span>
+                    </button>
                 </div>
 
-                <div id="stepsContainer" class="space-y-6">
-                    <!-- Dynamicky generované kroky -->
+                <div id="recordedDataContainer" class="collapsible-container pt-3">
+                    <div id="recordedDataList" class="space-y-3">
+                        <!-- Dynamicky generované řádky evidovaných údajů -->
+                    </div>
+                    <button type="button" id="addRecordedDataBtn" class="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-2 rounded-lg transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Přidat evidovaný údaj
+                    </button>
+                </div>
+            </div>
+
+            <!-- KARTA 3: Kroky agendy -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                <div class="flex items-center justify-between mb-6 pb-3 border-b border-slate-100">
+                    <div class="flex items-center gap-3">
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-blue-600"></i> Kroky agendy
+                        </h2>
+                        <span id="stepCountBadge" class="bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                            0 kroků
+                        </span>
+                    </div>
                 </div>
 
-                <button type="button" id="addStepBtn" class="mt-8 w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 font-semibold shadow-sm group bg-gray-50/30">
-                    <i class="fa-solid fa-plus text-lg group-hover:scale-110 transition-transform"></i> Přidat nový krok
+                <!-- Kontejner karet jednotlivých kroků -->
+                <div id="stepsContainer" class="space-y-5">
+                    <!-- Dynamicky generované karty kroků -->
+                </div>
+
+                <!-- Tlačítko pro přidání nového kroku -->
+                <button type="button" id="addStepBtn" class="w-full mt-5 py-3.5 border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl text-slate-500 hover:text-blue-600 font-semibold text-sm flex items-center justify-center gap-2 transition-all hover:bg-blue-50/30">
+                    <i class="fa-solid fa-plus"></i> Přidat nový krok
                 </button>
             </div>
 
-            <div class="flex justify-end mt-4 mb-10">
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl shadow-lg shadow-blue-200 transition-all transform hover:-translate-y-0.5 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
-                    <i class="fa-solid fa-cloud-arrow-up"></i> Odeslat do SharePointu
-                </button>
+            <!-- Fixní spodní lišta s odesláním -->
+            <div class="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 p-4 z-20">
+                <div class="max-w-5xl mx-auto flex items-center justify-between">
+                    <span class="text-xs text-slate-500 hidden sm:inline">Všechny změny se ukládají přímo do SharePointu</span>
+                    <button type="submit" class="w-full sm:w-auto ml-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>Odeslat do SharePointu</span>
+                    </button>
+                </div>
             </div>
+
         </form>
     </main>
 
-    <!-- Toast Notifikace -->
-    <div id="toastNotification" class="fixed bottom-5 right-5 bg-gray-800 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 hidden z-50 transition-colors duration-300">
-        <i class="fa-solid fa-circle-check text-green-400 text-xl toast-icon"></i>
-        <div>
-            <h4 class="font-bold text-sm toast-title">Úspěšně odesláno</h4>
-            <p class="text-xs text-gray-300 toast-msg">Data byla úspěšně uložena.</p>
-        </div>
-    </div>
-
-    <!-- Custom Delete Modal -->
-    <div id="deleteModal" class="fixed inset-0 bg-gray-900/40 backdrop-blur-sm hidden z-50 flex items-center justify-center transition-opacity">
-        <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
-            <div class="p-6">
-                <div class="flex items-center gap-3 mb-4 text-red-600">
-                    <div class="bg-red-100 p-2 rounded-full"><i class="fa-solid fa-triangle-exclamation text-xl"></i></div>
-                    <h3 class="text-lg font-bold text-gray-900">Potvrzení smazání</h3>
+    <!-- Modální okno pro schéma procesu (Mermaid) -->
+    <div id="diagramModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 modal-enter">
+            <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-diagram-project text-blue-600 text-lg"></i>
+                    <h3 class="text-base font-bold text-slate-800">Procesní schéma agendy</h3>
                 </div>
-                <p class="text-sm text-gray-600 mb-6">Opravdu chcete tuto položku smazat? Tato akce je nevratná.</p>
-                <div class="flex items-center justify-end gap-3">
-                    <button type="button" id="modalCancelBtn" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">Zrušit</button>
-                    <button type="button" id="modalConfirmBtn" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm shadow-red-200">Smazat</button>
-                </div>
+                <button type="button" id="diagramCloseBtn" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200 transition-colors">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-6 overflow-auto flex-1 flex items-center justify-center min-h-[350px] bg-slate-50/50" id="diagramCanvas">
+                <!-- Zde Mermaid vykreslí SVG diagram -->
+            </div>
+            <div class="p-3 bg-white border-t border-slate-100 flex justify-end">
+                <button type="button" id="diagramCloseBtnBottom" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                    Zavřít
+                </button>
             </div>
         </div>
     </div>
 
-<script>
+    <!-- Modální okno pro potvrzení smazání -->
+    <div id="deleteModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100 modal-enter">
+            <div class="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4 text-xl">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800 mb-2">Opravdu chcete tuto položku smazat?</h3>
+            <p class="text-sm text-slate-500 mb-6">Tato akce je nevratná a odstraní položku z formuláře i případné soubory.</p>
+            <div class="flex items-center justify-end gap-3">
+                <button type="button" id="modalCancelBtn" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Zrušit</button>
+                <button type="button" id="modalConfirmBtn" class="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-sm transition-colors">Smazat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notifikace -->
+    <div id="toastNotification" class="fixed bottom-20 right-6 z-50 hidden max-w-md bg-gray-800 text-white p-4 rounded-xl shadow-2xl flex items-start gap-3 border border-slate-700">
+        <i class="fa-solid fa-circle-check text-green-400 text-xl toast-icon mt-0.5"></i>
+        <div>
+            <h4 class="font-bold text-sm toast-title">Notifikace</h4>
+            <p class="text-xs text-slate-300 mt-0.5 toast-msg">Zpráva...</p>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-white/70 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-3 hidden">
+        <i class="fa-solid fa-spinner fa-spin text-3xl text-blue-600"></i>
+        <span class="text-sm font-semibold text-slate-700">Načítám data ze SharePointu...</span>
+    </div>
+
+    <!-- JAVASCRIPT LOGIKA APLIKACE -->
+    <script>
+        // Inicializace Mermaid knihovny
+        if (typeof mermaid !== 'undefined') {
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'neutral',
+                flowchart: {
+                    useMaxWidth: true,
+                    htmlLabels: true,
+                    curve: 'basis'
+                }
+            });
+        }
+
         // --- KONFIGURACE APIM ADRES ---
         const POST_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/ulozeni-popisu-agendy/Prijmout_HTTP_pozadavek_z_formulare/paths/invoke";
         const GET_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/nacteni-popisu-agendy/Prijmout_HTTP_pozadavek/paths/invoke";
         const SP_DOCS_BASE_URL = "https://carachosro.sharepoint.com/sites/Agendy/dokumenty_agend";
         // ------------------------------
 
-        // Globální pole pro evidenci souborů určených ke smazání ze SharePointu (drží serverFileName)
+        // Globální pole pro evidenci souborů určených ke smazání ze SharePointu
         let deletedFiles = [];
 
         // Generování unikátního úložištního názvu s čistým GUIDem před příponou
@@ -221,6 +304,11 @@
             const loadingOverlay = document.getElementById('loadingOverlay');
             const recordedDataList = document.getElementById('recordedDataList');
             const addRecordedDataBtn = document.getElementById('addRecordedDataBtn');
+            const showDiagramBtn = document.getElementById('showDiagramBtn');
+            const diagramModal = document.getElementById('diagramModal');
+            const diagramCloseBtn = document.getElementById('diagramCloseBtn');
+            const diagramCloseBtnBottom = document.getElementById('diagramCloseBtnBottom');
+            const diagramCanvas = document.getElementById('diagramCanvas');
             
             // Inicializace načítání z URL
             const urlParams = new URLSearchParams(window.location.search);
@@ -259,7 +347,6 @@
             }
 
             function populateForm(data, agendaId) {
-                // 1. Základní údaje agendy
                 if (data.agenda) {
                     const nameEl = document.getElementById('agendaName');
                     const descEl = document.getElementById('agendaDesc');
@@ -283,7 +370,6 @@
                 stepsContainer.innerHTML = '';
                 deletedFiles = [];
 
-                // 2. Evidované údaje
                 if (data.recordedData && data.recordedData.length > 0) {
                     const targetEl = document.getElementById('recordedDataContainer');
                     const toggleBtn = document.querySelector(`[data-target="recordedDataContainer"]`);
@@ -310,7 +396,6 @@
                     });
                 }
 
-                // 3. Kroky
                 if (data.steps && data.steps.length > 0) {
                     data.steps.forEach(step => {
                         addStep(null, step.id);
@@ -321,7 +406,6 @@
                         card.querySelector('.step-desc-input').value = step.description || '';
                         autoExpand(card.querySelector('.step-desc-input'));
 
-                        // Formulář kroku
                         if (step.formFile) {
                             const isObj = typeof step.formFile === 'object';
                             const displayName = isObj ? step.formFile.name : step.formFile;
@@ -358,7 +442,6 @@
                             }
                         }
 
-                        // Vstupy
                         if (step.inputs && step.inputs.length > 0) {
                             const inputsList = card.querySelector(`#inputs-${step.id} .io-list`);
                             step.inputs.forEach(io => {
@@ -417,7 +500,6 @@
                             });
                         }
 
-                        // Výstupy
                         if (step.outputs && step.outputs.length > 0) {
                             const outputsList = card.querySelector(`#outputs-${step.id} .io-list`);
                             step.outputs.forEach(io => {
@@ -517,6 +599,78 @@
                 }
             }
 
+            // --- ZOBRAZENÍ SCHÉMATU PROCESU (MERMAID) ---
+            async function showProcessDiagramModal() {
+                const steps = [];
+                document.querySelectorAll('.step-card').forEach((card, index) => {
+                    const id = card.id;
+                    const name = card.querySelector('.step-name-input')?.value.trim() || `Krok ${index + 1}`;
+                    const nextSteps = [];
+                    card.querySelectorAll('.next-step-row').forEach(row => {
+                        const targetId = row.querySelector('.next-step-select')?.value;
+                        const condition = row.querySelector('.condition-input')?.value.trim();
+                        if (targetId) {
+                            nextSteps.push({ targetStepId: targetId, condition: condition || '' });
+                        }
+                    });
+                    steps.push({ id, name, nextSteps });
+                });
+
+                if (steps.length === 0) {
+                    showToast("Upozornění", "Agenda zatím neobsahuje žádné kroky k zobrazení.", true);
+                    return;
+                }
+
+                // Sestavení definice Mermaid diagramu
+                let definition = 'flowchart TD\n';
+                steps.forEach(s => {
+                    const safeName = s.name.replace(/["\[\]()]/g, '');
+                    definition += `    ${s.id}["${safeName}"]\n`;
+                });
+
+                let hasConnections = false;
+                steps.forEach(s => {
+                    s.nextSteps.forEach(ns => {
+                        hasConnections = true;
+                        if (ns.condition) {
+                            const safeCond = ns.condition.replace(/["|]/g, '');
+                            definition += `    ${s.id} -->|${safeCond}| ${ns.targetStepId}\n`;
+                        } else {
+                            definition += `    ${s.id} --> ${ns.targetStepId}\n`;
+                        }
+                    });
+                });
+
+                // Pokud ještě nejsou explicitní vazby, propojit lineárně jako náhled
+                if (!hasConnections && steps.length > 1) {
+                    definition += '    %% Automatické sekvenční propojení:\n';
+                    for (let i = 0; i < steps.length - 1; i++) {
+                        definition += `    ${steps[i].id} -.-> ${steps[i+1].id}\n`;
+                    }
+                }
+
+                diagramCanvas.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-2xl text-blue-500"></i>';
+                diagramModal.classList.remove('hidden');
+
+                try {
+                    const renderId = 'mermaid-' + Date.now();
+                    const { svg } = await mermaid.render(renderId, definition);
+                    diagramCanvas.innerHTML = svg;
+                } catch (err) {
+                    console.error("Chyba při generování diagramu:", err);
+                    diagramCanvas.innerHTML = `<div class="text-sm text-red-500 text-center p-4">Nepodařilo se vygenerovat schéma: ${err.message}</div>`;
+                }
+            }
+
+            function closeDiagramModal() {
+                diagramModal.classList.add('hidden');
+            }
+
+            if (showDiagramBtn) showDiagramBtn.addEventListener('click', showProcessDiagramModal);
+            if (diagramCloseBtn) diagramCloseBtn.addEventListener('click', closeDiagramModal);
+            if (diagramCloseBtnBottom) diagramCloseBtnBottom.addEventListener('click', closeDiagramModal);
+
+            // Modální dialog pro mazání
             const deleteModal = document.getElementById('deleteModal');
             const modalCancelBtn = document.getElementById('modalCancelBtn');
             const modalConfirmBtn = document.getElementById('modalConfirmBtn');
@@ -742,7 +896,6 @@
                 try {
                     const allNewFiles = [];
 
-                    // 1. ČISTÝ DETAIL BEZ BASE64 PRO SHAREPOINT SEZNAM
                     const cleanDetail = {
                         agenda: {
                             name: document.getElementById('agendaName')?.value || '',
@@ -778,13 +931,11 @@
                             const base64 = await fileToBase64(file);
                             const serverFileName = generateServerFileName(file.name);
                             
-                            // Do detailu čistý název a serverFileName
                             formFileData = { 
                                 name: file.name,
                                 serverFileName: serverFileName
                             };
                             
-                            // Binárka jde do allNewFiles s unikátním GUID názvem
                             allNewFiles.push({
                                 name: serverFileName,
                                 contentBytes: base64,
@@ -807,7 +958,6 @@
                                 const filesInput = row.querySelector('.io-file-input');
                                 const filesList = [];
 
-                                // Zachováme stávající soubory
                                 if (row._existingFiles) {
                                     row._existingFiles.forEach(ef => filesList.push({
                                         name: ef.name,
@@ -816,19 +966,16 @@
                                     }));
                                 }
 
-                                // Zpracujeme nově vybrané soubory
                                 if (filesInput && filesInput.files.length > 0) {
                                     for (const file of Array.from(filesInput.files)) {
                                         const base64 = await fileToBase64(file);
                                         const serverFileName = generateServerFileName(file.name);
                                         
-                                        // Do detailu čistý zobrazovaný i serverový název
                                         filesList.push({ 
                                             name: file.name,
                                             serverFileName: serverFileName
                                         });
 
-                                        // Binárka jde s unikátním GUID názvem
                                         allNewFiles.push({
                                             name: serverFileName,
                                             contentBytes: base64,
@@ -865,7 +1012,6 @@
                         });
                     }
 
-                    // 2. FINÁLNÍ PAYLOAD
                     const payload = {
                         id: currentRecordId || null,
                         detail: cleanDetail,
@@ -981,7 +1127,6 @@
                 }
                 if (e.target.classList.contains('r-data-col')) e.target.dataset.manualEdit = 'true';
 
-                // Validace: Odemčení / uzamčení souborů podle vyplnění názvu vstupu/výstupu
                 if (e.target.classList.contains('io-name-input')) {
                     const row = e.target.closest('.io-row');
                     const fileWrapper = row.querySelector('.io-file-wrapper');
@@ -1104,7 +1249,6 @@
                     },
                     '.remove-next-step': btn => { const p = btn.closest('.step-panel'); btn.closest('.next-step-row').remove(); checkPanelDataAndUpdateIcon(p); },
                     
-                    // Smazání formuláře kroku
                     '.remove-existing-formfile-btn': btn => {
                         const formPanel = btn.closest('[id^="form-"]');
                         if (formPanel && formPanel.dataset.existingServerName) {
@@ -1118,7 +1262,6 @@
                         checkPanelDataAndUpdateIcon(formPanel);
                     },
 
-                    // Smazání vstupu/výstupu
                     '.remove-existing-iofile-btn': btn => {
                         const li = btn.closest('.existing-io-file-item');
                         const row = btn.closest('.io-row');
