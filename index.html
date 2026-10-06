@@ -148,8 +148,20 @@
         const SP_DOCS_BASE_URL = "https://carachosro.sharepoint.com/sites/Agendy/dokumenty_agend";
         // ------------------------------
 
-        // Globální pole pro evidenci souborů určených ke smazání ze SharePointu
+        // Globální pole pro evidenci souborů určených ke smazání ze SharePointu (drží serverFileName)
         let deletedFiles = [];
+
+        // Generování unikátního úložištního názvu s čistým GUIDem před příponou
+        function generateServerFileName(originalName) {
+            const guid = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+                ? crypto.randomUUID() 
+                : 'guid_' + Math.random().toString(36).substring(2, 11);
+            const lastDot = originalName.lastIndexOf('.');
+            if (lastDot === -1) return `${originalName}_${guid}`;
+            const base = originalName.substring(0, lastDot);
+            const ext = originalName.substring(lastDot);
+            return `${base}_${guid}${ext}`;
+        }
 
         function fileToBase64(file) {
             return new Promise((resolve, reject) => {
@@ -235,7 +247,6 @@
                         parsedData = JSON.parse(sanitizeJsonString(parsedData));
                     }
                     
-                    // Podpora pro nový i starší formát uložení
                     const actualData = parsedData.detail ? parsedData.detail : parsedData;
                     populateForm(actualData, id);
                 } catch (err) {
@@ -268,12 +279,11 @@
                     }
                 }
 
-                // 2. Vyčištění kontejnerů
                 recordedDataList.innerHTML = '';
                 stepsContainer.innerHTML = '';
                 deletedFiles = [];
 
-                // 3. Evidované údaje
+                // 2. Evidované údaje
                 if (data.recordedData && data.recordedData.length > 0) {
                     const targetEl = document.getElementById('recordedDataContainer');
                     const toggleBtn = document.querySelector(`[data-target="recordedDataContainer"]`);
@@ -300,7 +310,7 @@
                     });
                 }
 
-                // 4. Kroky
+                // 3. Kroky
                 if (data.steps && data.steps.length > 0) {
                     data.steps.forEach(step => {
                         addStep(null, step.id);
@@ -311,16 +321,17 @@
                         card.querySelector('.step-desc-input').value = step.description || '';
                         autoExpand(card.querySelector('.step-desc-input'));
 
-                        // Formulář kroku – existující soubor
+                        // Formulář kroku
                         if (step.formFile) {
-                            const fileName = typeof step.formFile === 'object' ? step.formFile.name : step.formFile;
-                            const fileUrl = (typeof step.formFile === 'object' && step.formFile.url) 
-                                ? step.formFile.url 
-                                : `${SP_DOCS_BASE_URL}/${agendaId}/${encodeURIComponent(fileName)}`;
+                            const isObj = typeof step.formFile === 'object';
+                            const displayName = isObj ? step.formFile.name : step.formFile;
+                            const serverName = (isObj && step.formFile.serverFileName) ? step.formFile.serverFileName : displayName;
+                            const fileUrl = `${SP_DOCS_BASE_URL}/${agendaId}/${encodeURIComponent(serverName)}`;
                             
                             const formPanel = card.querySelector(`#form-${step.id}`);
                             if (formPanel) {
-                                formPanel.dataset.existingFileName = fileName;
+                                formPanel.dataset.existingDisplayName = displayName;
+                                formPanel.dataset.existingServerName = serverName;
                                 formPanel.dataset.existingFileUrl = fileUrl;
                                 
                                 const previewContainer = formPanel.querySelector('.existing-file-preview') || document.createElement('div');
@@ -329,7 +340,7 @@
                                     <div class="flex items-center gap-2 truncate">
                                         <i class="fa-solid fa-file-lines text-blue-600"></i>
                                         <a href="${fileUrl}" target="_blank" rel="noopener noreferrer" class="font-medium hover:underline flex items-center gap-1.5 text-blue-700 truncate" title="Otevřít v nové záložce">
-                                            <span>${fileName}</span>
+                                            <span>${displayName}</span>
                                             <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
                                         </a>
                                     </div>
@@ -375,17 +386,21 @@
                                     row._existingFiles = [];
 
                                     io.files.forEach(f => {
-                                        const fName = typeof f === 'object' ? f.name : f;
-                                        const fUrl = (typeof f === 'object' && f.url) ? f.url : `${SP_DOCS_BASE_URL}/${agendaId}/${encodeURIComponent(fName)}`;
-                                        row._existingFiles.push({ name: fName, url: fUrl });
+                                        const isObj = typeof f === 'object';
+                                        const displayName = isObj ? f.name : f;
+                                        const serverName = (isObj && f.serverFileName) ? f.serverFileName : displayName;
+                                        const fileUrl = `${SP_DOCS_BASE_URL}/${agendaId}/${encodeURIComponent(serverName)}`;
+                                        
+                                        row._existingFiles.push({ name: displayName, serverFileName: serverName, url: fileUrl });
 
                                         const li = document.createElement('li');
                                         li.className = "flex items-center justify-between bg-blue-50/70 px-2 py-1.5 rounded border border-blue-100 mb-1 existing-io-file-item";
-                                        li.dataset.fileName = fName;
+                                        li.dataset.serverFileName = serverName;
+                                        li.dataset.displayName = displayName;
                                         li.innerHTML = `
-                                            <a href="${fUrl}" target="_blank" rel="noopener noreferrer" class="truncate mr-2 text-blue-700 hover:underline flex items-center gap-1.5">
+                                            <a href="${fileUrl}" target="_blank" rel="noopener noreferrer" class="truncate mr-2 text-blue-700 hover:underline flex items-center gap-1.5">
                                                 <i class="fa-solid fa-paperclip text-[10px]"></i>
-                                                <span class="truncate">${fName}</span>
+                                                <span class="truncate">${displayName}</span>
                                                 <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-blue-500"></i>
                                             </a>
                                             <div class="flex items-center gap-1 shrink-0 ml-2">
@@ -430,17 +445,21 @@
                                     row._existingFiles = [];
 
                                     io.files.forEach(f => {
-                                        const fName = typeof f === 'object' ? f.name : f;
-                                        const fUrl = (typeof f === 'object' && f.url) ? f.url : `${SP_DOCS_BASE_URL}/${agendaId}/${encodeURIComponent(fName)}`;
-                                        row._existingFiles.push({ name: fName, url: fUrl });
+                                        const isObj = typeof f === 'object';
+                                        const displayName = isObj ? f.name : f;
+                                        const serverName = (isObj && f.serverFileName) ? f.serverFileName : displayName;
+                                        const fileUrl = `${SP_DOCS_BASE_URL}/${agendaId}/${encodeURIComponent(serverName)}`;
+                                        
+                                        row._existingFiles.push({ name: displayName, serverFileName: serverName, url: fileUrl });
 
                                         const li = document.createElement('li');
                                         li.className = "flex items-center justify-between bg-emerald-50/70 px-2 py-1.5 rounded border border-emerald-100 mb-1 existing-io-file-item";
-                                        li.dataset.fileName = fName;
+                                        li.dataset.serverFileName = serverName;
+                                        li.dataset.displayName = displayName;
                                         li.innerHTML = `
-                                            <a href="${fUrl}" target="_blank" rel="noopener noreferrer" class="truncate mr-2 text-emerald-700 hover:underline flex items-center gap-1.5">
+                                            <a href="${fileUrl}" target="_blank" rel="noopener noreferrer" class="truncate mr-2 text-emerald-700 hover:underline flex items-center gap-1.5">
                                                 <i class="fa-solid fa-paperclip text-[10px]"></i>
-                                                <span class="truncate">${fName}</span>
+                                                <span class="truncate">${displayName}</span>
                                                 <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-500"></i>
                                             </a>
                                             <div class="flex items-center gap-1 shrink-0 ml-2">
@@ -723,7 +742,7 @@
                 try {
                     const allNewFiles = [];
 
-                    // 1. ČISTÝ DETAIL BEZ BASE64 (max několik KB, žádné binárky!)
+                    // 1. ČISTÝ DETAIL BEZ BASE64 PRO SHAREPOINT SEZNAM
                     const cleanDetail = {
                         agenda: {
                             name: document.getElementById('agendaName')?.value || '',
@@ -757,19 +776,24 @@
                         if (formInput && formInput.files.length > 0) {
                             const file = formInput.files[0];
                             const base64 = await fileToBase64(file);
+                            const serverFileName = generateServerFileName(file.name);
                             
-                            // Do detailu pouze název souboru
-                            formFileData = { name: file.name };
-                            
-                            // Binárka jde do allNewFiles pro nahrání do knihovny
-                            allNewFiles.push({
+                            // Do detailu čistý název a serverFileName
+                            formFileData = { 
                                 name: file.name,
+                                serverFileName: serverFileName
+                            };
+                            
+                            // Binárka jde do allNewFiles s unikátním GUID názvem
+                            allNewFiles.push({
+                                name: serverFileName,
                                 contentBytes: base64,
                                 contentType: file.type || 'application/octet-stream'
                             });
-                        } else if (formPanel && formPanel.dataset.existingFileName) {
+                        } else if (formPanel && formPanel.dataset.existingServerName) {
                             formFileData = {
-                                name: formPanel.dataset.existingFileName,
+                                name: formPanel.dataset.existingDisplayName,
+                                serverFileName: formPanel.dataset.existingServerName,
                                 url: formPanel.dataset.existingFileUrl
                             };
                         }
@@ -783,20 +807,30 @@
                                 const filesInput = row.querySelector('.io-file-input');
                                 const filesList = [];
 
+                                // Zachováme stávající soubory
                                 if (row._existingFiles) {
-                                    row._existingFiles.forEach(ef => filesList.push({ name: ef.name, url: ef.url }));
+                                    row._existingFiles.forEach(ef => filesList.push({
+                                        name: ef.name,
+                                        serverFileName: ef.serverFileName,
+                                        url: ef.url
+                                    }));
                                 }
 
+                                // Zpracujeme nově vybrané soubory
                                 if (filesInput && filesInput.files.length > 0) {
                                     for (const file of Array.from(filesInput.files)) {
                                         const base64 = await fileToBase64(file);
+                                        const serverFileName = generateServerFileName(file.name);
                                         
-                                        // Do detailu pouze čistý název bez Base64!
-                                        filesList.push({ name: file.name });
-
-                                        // Binárka jde do allNewFiles pro nahrání do SharePointu
-                                        allNewFiles.push({
+                                        // Do detailu čistý zobrazovaný i serverový název
+                                        filesList.push({ 
                                             name: file.name,
+                                            serverFileName: serverFileName
+                                        });
+
+                                        // Binárka jde s unikátním GUID názvem
+                                        allNewFiles.push({
+                                            name: serverFileName,
                                             contentBytes: base64,
                                             contentType: file.type || 'application/octet-stream'
                                         });
@@ -831,7 +865,7 @@
                         });
                     }
 
-                    // 2. FINÁLNÍ PAYLOAD: id určuje CREATE vs UPDATE, files je pro knihovnu
+                    // 2. FINÁLNÍ PAYLOAD
                     const payload = {
                         id: currentRecordId || null,
                         detail: cleanDetail,
@@ -848,9 +882,8 @@
                     if (response.ok) {
                         const resData = await response.json();
                         showToast("Úspěšně uloženo", "Data agendy i soubory byly v pořádku odeslány do SharePointu.");
-                        deletedFiles = []; // Vyčistíme frontu smazaných souborů
+                        deletedFiles = [];
                         
-                        // Pokud to byla nová agenda, nastavíme do URL její nové ID pro případné další ukládání
                         if (resData.id && !currentRecordId) {
                             currentRecordId = String(resData.id);
                             const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?id=${currentRecordId}`;
@@ -909,7 +942,7 @@
                         if (input.value.trim() !== '' && !input.closest('.condition-container.opacity-50')) hasData = true;
                     });
                     panelEl.querySelectorAll('input[type="file"]:not(.io-file-input)').forEach(input => {
-                        if (input.files.length > 0 || panelEl.dataset.existingFileName) hasData = true;
+                        if (input.files.length > 0 || panelEl.dataset.existingServerName) hasData = true;
                     });
                     panelEl.querySelectorAll('select.next-step-select').forEach(select => {
                         if (select.value !== '') hasData = true;
@@ -1036,11 +1069,11 @@
                     '.delete-step-btn': btn => showDeleteModal(() => { 
                         const card = btn.closest('.step-card');
                         const formPanel = card.querySelector('[id^="form-"]');
-                        if (formPanel && formPanel.dataset.existingFileName) {
-                            deletedFiles.push(formPanel.dataset.existingFileName);
+                        if (formPanel && formPanel.dataset.existingServerName) {
+                            deletedFiles.push(formPanel.dataset.existingServerName);
                         }
                         card.querySelectorAll('.existing-io-file-item').forEach(item => {
-                            if (item.dataset.fileName) deletedFiles.push(item.dataset.fileName);
+                            if (item.dataset.serverFileName) deletedFiles.push(item.dataset.serverFileName);
                         });
 
                         card.remove(); 
@@ -1058,7 +1091,7 @@
                         const row = btn.closest('.io-row');
                         const p = btn.closest('.step-panel');
                         if (row._existingFiles) {
-                            row._existingFiles.forEach(f => deletedFiles.push(f.name));
+                            row._existingFiles.forEach(f => deletedFiles.push(f.serverFileName));
                         }
                         row.remove(); 
                         checkPanelDataAndUpdateIcon(p); 
@@ -1071,12 +1104,13 @@
                     },
                     '.remove-next-step': btn => { const p = btn.closest('.step-panel'); btn.closest('.next-step-row').remove(); checkPanelDataAndUpdateIcon(p); },
                     
-                    // Smazání existujícího souboru z formuláře kroku
+                    // Smazání formuláře kroku
                     '.remove-existing-formfile-btn': btn => {
                         const formPanel = btn.closest('[id^="form-"]');
-                        if (formPanel && formPanel.dataset.existingFileName) {
-                            deletedFiles.push(formPanel.dataset.existingFileName);
-                            delete formPanel.dataset.existingFileName;
+                        if (formPanel && formPanel.dataset.existingServerName) {
+                            deletedFiles.push(formPanel.dataset.existingServerName);
+                            delete formPanel.dataset.existingDisplayName;
+                            delete formPanel.dataset.existingServerName;
                             delete formPanel.dataset.existingFileUrl;
                         }
                         const preview = formPanel.querySelector('.existing-file-preview');
@@ -1084,17 +1118,17 @@
                         checkPanelDataAndUpdateIcon(formPanel);
                     },
 
-                    // Smazání existujícího souboru ze vstupu/výstupu
+                    // Smazání vstupu/výstupu
                     '.remove-existing-iofile-btn': btn => {
                         const li = btn.closest('.existing-io-file-item');
                         const row = btn.closest('.io-row');
                         const p = btn.closest('.step-panel');
-                        const fileName = li.dataset.fileName;
+                        const serverFileName = li.dataset.serverFileName;
 
-                        if (fileName) {
-                            deletedFiles.push(fileName);
+                        if (serverFileName) {
+                            deletedFiles.push(serverFileName);
                             if (row._existingFiles) {
-                                row._existingFiles = row._existingFiles.filter(f => f.name !== fileName);
+                                row._existingFiles = row._existingFiles.filter(f => f.serverFileName !== serverFileName);
                             }
                         }
                         li.remove();
