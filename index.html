@@ -143,17 +143,11 @@
 
 <script>
         // --- KONFIGURACE APIM ADRES ---
-        // Endpoint pro ODESÍLÁNÍ nového záznamu
         const POST_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/ulozeni-popisu-agendy/Prijmout_HTTP_pozadavek_z_formulare/paths/invoke";
-        
-        // Endpoint pro NAČÍTÁNÍ existujícího záznamu (podle ID)
         const GET_LOGIC_APP_URL = "https://api-krabicky.azure-api.net/nacteni-popisu-agendy/Prijmout_HTTP_pozadavek/paths/invoke";
-        
-        // Základní cesta do knihovny dokumentů v SharePointu
         const SP_DOCS_BASE_URL = "https://carachosro.sharepoint.com/sites/Agendy/dokumenty_agend";
         // ------------------------------
 
-        // Převede File objekt z inputu na čistý Base64 řetězec bez prefixu
         function fileToBase64(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -166,7 +160,6 @@
             });
         }
         
-        // Pomocná funkce pro bezpečné ošetření surových konců řádků (Enterů) a řídicích znaků v JSONu
         function sanitizeJsonString(str) {
             let result = '';
             let inString = false;
@@ -214,14 +207,13 @@
             const recordedDataList = document.getElementById('recordedDataList');
             const addRecordedDataBtn = document.getElementById('addRecordedDataBtn');
             
-            // --- INICIALIZACE NAČÍTÁNÍ Z URL ---
             const urlParams = new URLSearchParams(window.location.search);
             const recordId = urlParams.get('id');
             
             if (recordId) {
                 loadRecordData(recordId);
             } else {
-                addStep(); // Výchozí prázdný krok pro nový záznam
+                addStep();
             }
 
             async function loadRecordData(id) {
@@ -232,8 +224,6 @@
                     if (!response.ok) throw new Error("Chyba při načítání dat ze SharePointu.");
                     
                     const textData = await response.text();
-                    
-                    // Ošetření surových znaků a parsování
                     const sanitized = sanitizeJsonString(textData);
                     let parsedData = JSON.parse(sanitized);
                     
@@ -245,14 +235,13 @@
                 } catch (err) {
                     console.error("Chyba stahování:", err);
                     showToast("Chyba načítání", "Nepodařilo se stáhnout data ze serveru.", true);
-                    addStep(); // fallback
+                    addStep();
                 } finally {
                     loadingOverlay.classList.add('hidden');
                 }
             }
 
             function populateForm(data, agendaId) {
-                // 1. Základní údaje agendy
                 if (data.agenda) {
                     const nameEl = document.getElementById('agendaName');
                     const descEl = document.getElementById('agendaDesc');
@@ -272,11 +261,9 @@
                     }
                 }
 
-                // 2. Vyčištění výchozích kontejnerů
                 recordedDataList.innerHTML = '';
                 stepsContainer.innerHTML = '';
 
-                // 3. Evidované údaje
                 if (data.recordedData && data.recordedData.length > 0) {
                     const targetEl = document.getElementById('recordedDataContainer');
                     const toggleBtn = document.querySelector(`[data-target="recordedDataContainer"]`);
@@ -303,7 +290,6 @@
                     });
                 }
 
-                // 4. Kroky – PRVNÍ PRŮCHOD (Karty a ID)
                 if (data.steps && data.steps.length > 0) {
                     data.steps.forEach(step => {
                         addStep(null, step.id);
@@ -314,7 +300,6 @@
                         card.querySelector('.step-desc-input').value = step.description || '';
                         autoExpand(card.querySelector('.step-desc-input'));
 
-                        // Formulář kroku – zobrazení existujícího souboru
                         if (step.formFile) {
                             const fileName = typeof step.formFile === 'object' ? step.formFile.name : step.formFile;
                             const fileUrl = (typeof step.formFile === 'object' && step.formFile.url) 
@@ -345,16 +330,27 @@
                             }
                         }
 
-                        // Vstupy
                         if (step.inputs && step.inputs.length > 0) {
                             const inputsList = card.querySelector(`#inputs-${step.id} .io-list`);
                             step.inputs.forEach(io => {
                                 const tempDiv = document.createElement('div');
                                 tempDiv.innerHTML = createIORowHTML('Vstup');
                                 const row = tempDiv.firstElementChild;
-                                row.querySelector('.io-name-input').value = io.name || '';
+                                const nameInput = row.querySelector('.io-name-input');
+                                nameInput.value = io.name || '';
                                 
-                                // Vykreslení existujících souborů u vstupu
+                                if (io.name) {
+                                    const fileWrapper = row.querySelector('.io-file-wrapper');
+                                    const fileInput = row.querySelector('.io-file-input');
+                                    if (fileInput && fileWrapper) {
+                                        fileInput.disabled = false;
+                                        fileInput.classList.remove('cursor-not-allowed', 'text-gray-400');
+                                        fileInput.classList.add('cursor-pointer', 'text-gray-500');
+                                        fileWrapper.classList.remove('opacity-50', 'bg-gray-50', 'border-gray-200');
+                                        fileWrapper.classList.add('bg-white', 'border-gray-300');
+                                    }
+                                }
+
                                 if (io.files && io.files.length > 0) {
                                     const fileListContainer = row.querySelector('.file-list-container');
                                     fileListContainer.classList.remove('hidden');
@@ -382,16 +378,27 @@
                             });
                         }
 
-                        // Výstupy
                         if (step.outputs && step.outputs.length > 0) {
                             const outputsList = card.querySelector(`#outputs-${step.id} .io-list`);
                             step.outputs.forEach(io => {
                                 const tempDiv = document.createElement('div');
                                 tempDiv.innerHTML = createIORowHTML('Výstup');
                                 const row = tempDiv.firstElementChild;
-                                row.querySelector('.io-name-input').value = io.name || '';
+                                const nameInput = row.querySelector('.io-name-input');
+                                nameInput.value = io.name || '';
                                 
-                                // Vykreslení existujících souborů u výstupu
+                                if (io.name) {
+                                    const fileWrapper = row.querySelector('.io-file-wrapper');
+                                    const fileInput = row.querySelector('.io-file-input');
+                                    if (fileInput && fileWrapper) {
+                                        fileInput.disabled = false;
+                                        fileInput.classList.remove('cursor-not-allowed', 'text-gray-400');
+                                        fileInput.classList.add('cursor-pointer', 'text-gray-500');
+                                        fileWrapper.classList.remove('opacity-50', 'bg-gray-50', 'border-gray-200');
+                                        fileWrapper.classList.add('bg-white', 'border-gray-300');
+                                    }
+                                }
+
                                 if (io.files && io.files.length > 0) {
                                     const fileListContainer = row.querySelector('.file-list-container');
                                     fileListContainer.classList.remove('hidden');
@@ -420,10 +427,8 @@
                         }
                     });
 
-                    // Aktualizace seznamu kroků pro roletky
                     updateUI();
 
-                    // 5. Kroky – DRUHÝ PRŮCHOD (Vazby navazujících kroků)
                     data.steps.forEach(step => {
                         const card = document.getElementById(step.id);
                         if (!card) return;
@@ -461,7 +466,6 @@
                 }
             }
 
-            // Modal Logic
             const deleteModal = document.getElementById('deleteModal');
             const modalCancelBtn = document.getElementById('modalCancelBtn');
             const modalConfirmBtn = document.getElementById('modalConfirmBtn');
@@ -628,8 +632,8 @@
                     </div>
                     <div class="flex-1 w-full">
                         <label class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Soubory (volitelné)</label>
-                        <div class="border border-gray-300 rounded-md p-1">
-                            <input type="file" multiple class="data-input io-file-input block w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:${colorClass.split(' ').join(' file:')} cursor-pointer bg-white">
+                        <div class="io-file-wrapper border border-gray-200 rounded-md p-1 opacity-50 bg-gray-50 transition-all">
+                            <input type="file" multiple disabled class="data-input io-file-input block w-full text-sm text-gray-400 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:${colorClass.split(' ').join(' file:')} cursor-not-allowed bg-transparent">
                         </div>
                         <ul class="file-list-container text-[11px] text-gray-600 mt-2 space-y-1 hidden"></ul>
                     </div>
@@ -685,12 +689,14 @@
                 submitBtn.disabled = true;
 
                 try {
+                    const allNewFiles = [];
+
                     const agendaData = {
                         agenda: {
                             name: document.getElementById('agendaName')?.value || '',
                             description: document.getElementById('agendaDesc')?.value || ''
                         },
-                        file: null, // Hlavní soubor pro akci Vytvořit_soubor v Logic App
+                        files: [],
                         recordedData: [],
                         steps: []
                     };
@@ -705,14 +711,13 @@
                         });
                     });
 
-                    // Procházíme kroky asynchronně pro načtení Base64 souborů
                     const stepCards = Array.from(document.querySelectorAll('.step-card'));
                     for (const card of stepCards) {
                         const stepId = card.id;
                         const stepName = card.querySelector('.step-name-input')?.value || '';
                         const stepDesc = card.querySelector('.step-desc-input')?.value || '';
                         
-                        // Zpracování formuláře kroku
+                        // 1. FORMULÁŘ KROKU
                         const formPanel = card.querySelector(`#form-${stepId}`);
                         const formInput = card.querySelector('.step-form-input');
                         let formFileData = null;
@@ -722,13 +727,12 @@
                             const base64 = await fileToBase64(file);
                             formFileData = {
                                 name: file.name,
-                                contentBytes: base64,
                                 contentType: file.type || 'application/octet-stream'
                             };
-                            // Pokud ještě v kořeni není nastaven file, předáme ho pro primární akci Vytvořit_soubor
-                            if (!agendaData.file) {
-                                agendaData.file = formFileData;
-                            }
+                            allNewFiles.push({
+                                name: file.name,
+                                contentBytes: base64
+                            });
                         } else if (formPanel && formPanel.dataset.existingFileName) {
                             formFileData = {
                                 name: formPanel.dataset.existingFileName,
@@ -736,35 +740,37 @@
                             };
                         }
 
-                        // Zpracování Vstupů a Výstupů (včetně Base64 nově nahraných příloh)
+                        // 2. VSTUPY A VÝSTUPY
                         const extractIOAsync = async (typeId) => {
                             const ioData = [];
                             const rows = Array.from(card.querySelectorAll(`#${typeId}-${stepId} .io-row`));
                             for (const row of rows) {
-                                const name = row.querySelector('.io-name-input')?.value || '';
+                                const name = row.querySelector('.io-name-input')?.value.trim() || '';
                                 const filesInput = row.querySelector('.io-file-input');
                                 const filesList = [];
 
-                                // Zachováme stávající soubory
                                 if (row._existingFiles) {
                                     row._existingFiles.forEach(ef => filesList.push(ef));
                                 }
 
-                                // Přidáme nově vybrané soubory
                                 if (filesInput && filesInput.files.length > 0) {
                                     for (const file of Array.from(filesInput.files)) {
                                         const base64 = await fileToBase64(file);
-                                        const filePayload = {
+                                        const fPayload = {
                                             name: file.name,
-                                            contentBytes: base64,
                                             contentType: file.type || 'application/octet-stream'
                                         };
-                                        filesList.push(filePayload);
-                                        if (!agendaData.file) agendaData.file = filePayload;
+                                        filesList.push(fPayload);
+                                        allNewFiles.push({
+                                            name: file.name,
+                                            contentBytes: base64
+                                        });
                                     }
                                 }
 
-                                if (name) ioData.push({ name, files: filesList });
+                                if (name) {
+                                    ioData.push({ name, files: filesList });
+                                }
                             }
                             return ioData;
                         };
@@ -789,6 +795,8 @@
                             nextSteps: nextSteps
                         });
                     }
+
+                    agendaData.files = allNewFiles;
 
                     const dataStr = JSON.stringify(agendaData);
 
@@ -891,6 +899,35 @@
                     }
                 }
                 if (e.target.classList.contains('r-data-col')) e.target.dataset.manualEdit = 'true';
+
+                // Validace: odemčení / uzamčení souborů podle vyplnění názvu vstupu/výstupu
+                if (e.target.classList.contains('io-name-input')) {
+                    const row = e.target.closest('.io-row');
+                    const fileWrapper = row.querySelector('.io-file-wrapper');
+                    const fileInput = row.querySelector('.io-file-input');
+                    const fileList = row.querySelector('.file-list-container');
+                    const hasValue = e.target.value.trim().length > 0;
+
+                    if (hasValue) {
+                        fileInput.disabled = false;
+                        fileInput.classList.remove('cursor-not-allowed', 'text-gray-400');
+                        fileInput.classList.add('cursor-pointer', 'text-gray-500');
+                        fileWrapper.classList.remove('opacity-50', 'bg-gray-50', 'border-gray-200');
+                        fileWrapper.classList.add('bg-white', 'border-gray-300');
+                    } else {
+                        fileInput.disabled = true;
+                        fileInput.value = '';
+                        fileInput._dt = new DataTransfer();
+                        fileInput.classList.add('cursor-not-allowed', 'text-gray-400');
+                        fileInput.classList.remove('cursor-pointer', 'text-gray-500');
+                        fileWrapper.classList.add('opacity-50', 'bg-gray-50', 'border-gray-200');
+                        fileWrapper.classList.remove('bg-white', 'border-gray-300');
+                        if (fileList) {
+                            fileList.innerHTML = '';
+                            fileList.classList.add('hidden');
+                        }
+                    }
+                }
             });
 
             document.addEventListener('change', (e) => {
