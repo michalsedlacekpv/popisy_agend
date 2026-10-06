@@ -44,29 +44,8 @@
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans min-h-screen pb-24">
 
-    <!-- Horní navigační lišta -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
-                    A
-                </div>
-                <div>
-                    <h1 class="text-lg font-bold text-slate-800 leading-tight">Popis procesní agendy</h1>
-                    <p class="text-xs text-slate-500">Integrace se SharePointem a procesním modelem</p>
-                </div>
-            </div>
-            <div class="flex items-center gap-2">
-                <button type="button" id="showDiagramBtn" class="px-3.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors flex items-center gap-2 shadow-sm">
-                    <i class="fa-solid fa-diagram-project text-blue-600"></i>
-                    <span>Schéma procesu</span>
-                </button>
-            </div>
-        </div>
-    </header>
-
     <!-- Hlavní obsah formuláře -->
-    <main class="max-w-5xl mx-auto px-4 mt-6">
+    <main class="max-w-5xl mx-auto px-4 py-6">
         <form id="agendaForm" class="space-y-6">
 
             <!-- KARTA 1: Základní údaje agendy -->
@@ -89,7 +68,7 @@
 
                     <div id="agendaDescContainer" class="collapsible-container border-t border-slate-100 pt-4 mt-2">
                         <label class="text-[11px] uppercase font-bold text-slate-500 mb-1.5 block">Podrobný popis agendy</label>
-                        <textarea id="agendaDesc" class="auto-expand w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all" rows="2" placeholder="Doplňující kontext a cíl agendy..."></textarea>
+                        <textarea id="agendaDesc" class="auto-expand w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all bg-white" rows="1" placeholder="Doplňující kontext a cíl agendy..."></textarea>
                     </div>
                 </div>
             </div>
@@ -130,6 +109,11 @@
                             0 kroků
                         </span>
                     </div>
+                    <!-- Tlačítko Schéma procesu přesunuté přímo sem do hlavičky kroků -->
+                    <button type="button" id="showDiagramBtn" class="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-diagram-project text-blue-600"></i>
+                        <span>Schéma procesu</span>
+                    </button>
                 </div>
 
                 <!-- Kontejner karet jednotlivých kroků -->
@@ -295,6 +279,14 @@
             return result;
         }
 
+        // Dynamické natahování textarea podle obsahu
+        function autoExpand(textarea) {
+            if (!textarea) return;
+            textarea.style.height = 'auto';
+            const newHeight = textarea.scrollHeight > 42 ? textarea.scrollHeight : 42;
+            textarea.style.height = newHeight + 'px';
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             const stepsContainer = document.getElementById('stepsContainer');
             const addStepBtn = document.getElementById('addStepBtn');
@@ -347,13 +339,12 @@
             }
 
             function populateForm(data, agendaId) {
+                // 1. Základní údaje agendy
                 if (data.agenda) {
                     const nameEl = document.getElementById('agendaName');
                     const descEl = document.getElementById('agendaDesc');
                     if (nameEl) nameEl.value = data.agenda.name || '';
                     if (descEl) descEl.value = data.agenda.description || '';
-                    autoExpand(nameEl);
-                    autoExpand(descEl);
                     
                     if (data.agenda.description) {
                         const targetEl = document.getElementById('agendaDescContainer');
@@ -364,12 +355,18 @@
                             toggleBtn.classList.remove('text-gray-600');
                         }
                     }
+
+                    // Výpočet výšky po zobrazení
+                    setTimeout(() => {
+                        autoExpand(descEl);
+                    }, 50);
                 }
 
                 recordedDataList.innerHTML = '';
                 stepsContainer.innerHTML = '';
                 deletedFiles = [];
 
+                // 2. Evidované údaje
                 if (data.recordedData && data.recordedData.length > 0) {
                     const targetEl = document.getElementById('recordedDataContainer');
                     const toggleBtn = document.querySelector(`[data-target="recordedDataContainer"]`);
@@ -396,6 +393,7 @@
                     });
                 }
 
+                // 3. Kroky
                 if (data.steps && data.steps.length > 0) {
                     data.steps.forEach(step => {
                         addStep(null, step.id);
@@ -406,6 +404,7 @@
                         card.querySelector('.step-desc-input').value = step.description || '';
                         autoExpand(card.querySelector('.step-desc-input'));
 
+                        // Formulář kroku
                         if (step.formFile) {
                             const isObj = typeof step.formFile === 'object';
                             const displayName = isObj ? step.formFile.name : step.formFile;
@@ -442,6 +441,7 @@
                             }
                         }
 
+                        // Vstupy
                         if (step.inputs && step.inputs.length > 0) {
                             const inputsList = card.querySelector(`#inputs-${step.id} .io-list`);
                             step.inputs.forEach(io => {
@@ -500,6 +500,7 @@
                             });
                         }
 
+                        // Výstupy
                         if (step.outputs && step.outputs.length > 0) {
                             const outputsList = card.querySelector(`#outputs-${step.id} .io-list`);
                             step.outputs.forEach(io => {
@@ -621,7 +622,6 @@
                     return;
                 }
 
-                // Sestavení definice Mermaid diagramu
                 let definition = 'flowchart TD\n';
                 steps.forEach(s => {
                     const safeName = s.name.replace(/["\[\]()]/g, '');
@@ -641,7 +641,6 @@
                     });
                 });
 
-                // Pokud ještě nejsou explicitní vazby, propojit lineárně jako náhled
                 if (!hasConnections && steps.length > 1) {
                     definition += '    %% Automatické sekvenční propojení:\n';
                     for (let i = 0; i < steps.length - 1; i++) {
@@ -1059,6 +1058,8 @@
                             if (targetEl.classList.contains('expanded')) {
                                 e.currentTarget.classList.add('text-blue-700', 'bg-blue-50/50');
                                 e.currentTarget.classList.remove('text-gray-600');
+                                // Po rozbalení ihned přepočítat výšku všech textarea uvnitř
+                                targetEl.querySelectorAll('textarea.auto-expand').forEach(ta => autoExpand(ta));
                             } else {
                                 e.currentTarget.classList.remove('text-blue-700', 'bg-blue-50/50');
                                 e.currentTarget.classList.add('text-gray-600');
@@ -1106,12 +1107,6 @@
                     iconBtn.classList.remove('ring-2', 'ring-blue-300');
                     indicator.textContent = '';
                 }
-            }
-
-            function autoExpand(textarea) {
-                if (!textarea) return;
-                textarea.style.height = '42px';
-                textarea.style.height = textarea.scrollHeight + 'px';
             }
 
             document.addEventListener('input', (e) => {
